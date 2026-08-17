@@ -13,6 +13,7 @@ describe("OpenClawBackend", () => {
     workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "chatgpt-web-agent-"));
     const config: BridgeConfig = {
       workspaceDir,
+      workspaceOnly: true,
       toolAllowlist: new Set(["read", "exec", "process", "apply_patch"]),
       maxOutputChars: 100_000,
       execSecurity: "full",
@@ -124,6 +125,44 @@ describe("OpenClawBackend", () => {
         { callId: "read-outside" },
       );
       expect(result.isError).toBe(true);
+    } finally {
+      await fs.rm(outsidePath, { force: true });
+    }
+  });
+
+  it("uses the workspace as a default without restricting external paths when configured", async () => {
+    const outsidePath = path.join(
+      path.dirname(workspaceDir),
+      `outside-unrestricted-${path.basename(workspaceDir)}.txt`,
+    );
+    await fs.writeFile(outsidePath, "outside-ok\n");
+    try {
+      const unrestricted = new OpenClawBackend({
+        workspaceDir,
+        workspaceOnly: false,
+        toolAllowlist: new Set(["read", "exec", "process", "apply_patch"]),
+        maxOutputChars: 100_000,
+        execSecurity: "full",
+        execAsk: "off",
+      });
+      const read = await unrestricted.callTool(
+        "read",
+        { path: outsidePath },
+        { callId: "read-outside-unrestricted" },
+      );
+      expect(read.isError).not.toBe(true);
+      expect(read.content[0]).toMatchObject({ type: "text", text: "outside-ok\n" });
+
+      const exec = await unrestricted.callTool(
+        "exec",
+        { command: "pwd", workdir: path.dirname(workspaceDir) },
+        { callId: "exec-outside-unrestricted" },
+      );
+      expect(exec.isError).not.toBe(true);
+      expect(exec.content[0]).toMatchObject({
+        type: "text",
+        text: path.dirname(workspaceDir),
+      });
     } finally {
       await fs.rm(outsidePath, { force: true });
     }

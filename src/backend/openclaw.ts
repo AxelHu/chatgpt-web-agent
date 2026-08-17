@@ -51,6 +51,7 @@ function isInside(root: string, candidate: string): boolean {
 function sanitizeExecArgs(
   args: Record<string, unknown>,
   workspaceDir: string,
+  workspaceOnly: boolean,
 ): Record<string, unknown> {
   const sanitized = { ...args };
   for (const field of INTERNAL_EXEC_FIELDS) {
@@ -58,7 +59,7 @@ function sanitizeExecArgs(
   }
   const requestedWorkdir = typeof sanitized.workdir === "string" ? sanitized.workdir.trim() : "";
   const workdir = path.resolve(workspaceDir, requestedWorkdir || ".");
-  if (!isInside(workspaceDir, workdir)) {
+  if (workspaceOnly && !isInside(workspaceDir, workdir)) {
     throw new Error(`exec workdir must stay inside workspace: ${workspaceDir}`);
   }
   sanitized.workdir = workdir;
@@ -69,13 +70,13 @@ function createToolRuntimeConfig(config: BridgeConfig) {
   return {
     tools: {
       fs: {
-        workspaceOnly: true,
+        workspaceOnly: config.workspaceOnly,
       },
       exec: {
         security: config.execSecurity ?? ("allowlist" as const),
         ask: config.execAsk ?? ("on-miss" as const),
         applyPatch: {
-          workspaceOnly: true,
+          workspaceOnly: config.workspaceOnly,
         },
       },
     },
@@ -144,7 +145,10 @@ export class OpenClawBackend implements LocalToolBackend {
       return toolError(`Tool not available: ${name}`);
     }
     try {
-      const publicArgs = name === "exec" ? sanitizeExecArgs(args, this.#config.workspaceDir) : args;
+      const publicArgs =
+        name === "exec"
+          ? sanitizeExecArgs(args, this.#config.workspaceDir, this.#config.workspaceOnly)
+          : args;
       const prepared = tool.prepareBeforeToolCallParams
         ? await tool.prepareBeforeToolCallParams(publicArgs, {
             toolCallId: context.callId,

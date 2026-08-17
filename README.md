@@ -15,6 +15,10 @@ P0 提供四个工具：
 
 默认只允许文件和补丁工具访问配置的 workspace；`exec.workdir` 也必须位于 workspace 内。OpenClaw 内部的 `host/security/ask/node/elevated` 参数不会暴露给 MCP 客户端。
 
+对于仅授权给可信 ChatGPT workspace 的独立 Connector，可以设置
+`CHATGPT_WEB_AGENT_WORKSPACE_ONLY=false`，此时 workspace 只是相对路径和默认 cwd 的落点，
+`read/apply_patch/exec.workdir` 可以访问外部绝对路径。该模式不是安全沙箱。
+
 > `exec.workdir` 边界不是命令沙箱。获得 `exec` 权限的客户端仍可能在命令文本中访问系统其他位置；只应把 Tunnel 授权给可信的 ChatGPT workspace，并按需要使用 OpenClaw 的 allowlist/approval 策略。
 
 ## 开发
@@ -31,6 +35,8 @@ pnpm smoke
 
 ```bash
 export CHATGPT_WEB_AGENT_WORKSPACE=/path/to/workspace
+# 可信独立 Connector 如需把 workspace 仅作为默认工作目录：
+# export CHATGPT_WEB_AGENT_WORKSPACE_ONLY=false
 pnpm build
 node dist/cli.js
 ```
