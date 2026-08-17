@@ -55,6 +55,11 @@ async function main(): Promise<void> {
   if (baseRedirect.hostname !== "localhost" && baseRedirect.hostname !== "127.0.0.1") {
     throw new Error(`OAuth redirect must use a local loopback address: ${baseRedirect.toString()}`);
   }
+  // Use the IPv4 loopback address explicitly.  Windows browsers may resolve
+  // `localhost` to ::1 first, while this WSL callback listener intentionally
+  // binds only to 127.0.0.1.  Google recommends loopback IP redirects for
+  // desktop apps and permits an ephemeral port.
+  baseRedirect.hostname = "127.0.0.1";
 
   const server = http.createServer();
   await new Promise<void>((resolve, reject) => {
