@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { CompositeBackend } from "./backend/composite.js";
 import { GoogleDriveBackend } from "./backend/google-drive.js";
 import { OpenClawBackend } from "./backend/openclaw.js";
+import { SkillsBackend } from "./backend/skills.js";
 import type { LocalToolBackend } from "./backend/types.js";
 import { loadBridgeConfig } from "./config.js";
 import { createLocalMcpServer } from "./server.js";
@@ -15,6 +16,10 @@ async function main(): Promise<void> {
   }
 
   const backends: LocalToolBackend[] = [new OpenClawBackend(config)];
+  if (config.skills) {
+    fs.mkdirSync(config.skills.catalogDir, { recursive: true });
+    backends.push(new SkillsBackend(config.skills, config.maxOutputChars));
+  }
   if (config.googleDrive) {
     fs.mkdirSync(config.googleDrive.localRoot, { recursive: true });
     backends.push(new GoogleDriveBackend(config.googleDrive));

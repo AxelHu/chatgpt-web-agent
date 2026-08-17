@@ -10,6 +10,7 @@ export type BridgeConfig = {
   execSecurity?: "deny" | "allowlist" | "full";
   execAsk?: "off" | "on-miss" | "always";
   googleDrive?: GoogleDriveConfig;
+  skills?: SkillsConfig;
 };
 
 export type GoogleDriveConfig = {
@@ -17,6 +18,18 @@ export type GoogleDriveConfig = {
   tokenPath: string;
   localRoot: string;
   localRootOnly: boolean;
+};
+
+export type SkillsConfig = {
+  agentId: string;
+  gatewayUrl: string;
+  catalogDir: string;
+  qmdUrl?: string;
+  qmdCollection: string;
+  defaultLimit: number;
+  maxLimit: number;
+  requestTimeoutMs: number;
+  maxSkillFileBytes: number;
 };
 
 function readBoolean(value: string | undefined, fallback: boolean, name: string): boolean {
@@ -97,6 +110,43 @@ export function loadBridgeConfig(
       }
     : undefined;
 
+  const skillsEnabled = readBoolean(
+    env.CHATGPT_WEB_AGENT_SKILLS_ENABLED,
+    true,
+    "CHATGPT_WEB_AGENT_SKILLS_ENABLED",
+  );
+  const skillsDefaultLimit = readPositiveInteger(
+    env.CHATGPT_WEB_AGENT_SKILLS_DEFAULT_LIMIT,
+    8,
+  );
+  const skillsMaxLimit = readPositiveInteger(env.CHATGPT_WEB_AGENT_SKILLS_MAX_LIMIT, 20);
+  if (skillsDefaultLimit > skillsMaxLimit) {
+    throw new Error("CHATGPT_WEB_AGENT_SKILLS_DEFAULT_LIMIT must not exceed CHATGPT_WEB_AGENT_SKILLS_MAX_LIMIT");
+  }
+  const skills = skillsEnabled
+    ? {
+        agentId: env.CHATGPT_WEB_AGENT_SKILLS_AGENT_ID?.trim() || "chatgpt-web-agent",
+        gatewayUrl:
+          env.CHATGPT_WEB_AGENT_SKILLS_GATEWAY_URL?.trim() || "ws://127.0.0.1:18789",
+        catalogDir: path.resolve(
+          env.CHATGPT_WEB_AGENT_SKILLS_CATALOG_DIR?.trim() || path.join(workspaceDir, "skills-catalog"),
+        ),
+        qmdUrl: env.CHATGPT_WEB_AGENT_SKILLS_QMD_URL?.trim() || undefined,
+        qmdCollection:
+          env.CHATGPT_WEB_AGENT_SKILLS_QMD_COLLECTION?.trim() || "skills-chatgpt-web-agent",
+        defaultLimit: skillsDefaultLimit,
+        maxLimit: skillsMaxLimit,
+        requestTimeoutMs: readPositiveInteger(
+          env.CHATGPT_WEB_AGENT_SKILLS_TIMEOUT_MS,
+          10_000,
+        ),
+        maxSkillFileBytes: readPositiveInteger(
+          env.CHATGPT_WEB_AGENT_SKILLS_MAX_FILE_BYTES,
+          256_000,
+        ),
+      }
+    : undefined;
+
   return {
     workspaceDir,
     workspaceOnly: readBoolean(
@@ -117,5 +167,6 @@ export function loadBridgeConfig(
       "CHATGPT_WEB_AGENT_EXEC_ASK",
     ),
     googleDrive,
+    skills,
   };
 }

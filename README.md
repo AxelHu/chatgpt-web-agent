@@ -23,6 +23,16 @@ P0 提供四个 OpenClaw 工具：
 - `drive_export`
 - `drive_mkdir`
 
+默认启用两个只读 OpenClaw Skills 工具：
+
+- `skills_list(query?, limit?)`
+- `skill_read(name)`
+
+`skills_list()` 返回当前 eligible + model-visible Skill 的紧凑名字目录；带自然语言 `query`
+时可通过独立 QMD collection 返回少量候选的名字和描述。`skill_read` 只接受 Skill 名称/key，
+canonical `SKILL.md` 路径始终由实时 OpenClaw `skills.status` 解析，不接受客户端提供文件路径。
+MCP initialize instructions 还会提示客户端：仅当任务明显可能依赖本地工具、服务、工作流或操作规范且当前上下文不足时主动发现 Skill；普通自包含任务不查询 Skill。
+
 默认只允许文件和补丁工具访问配置的 workspace；`exec.workdir` 也必须位于 workspace 内。OpenClaw 内部的 `host/security/ask/node/elevated` 参数不会暴露给 MCP 客户端。
 
 对于仅授权给可信 ChatGPT workspace 的独立 Connector，可以设置
@@ -83,10 +93,29 @@ ChatGPT Web
   → chatgpt-web-agent MCP Server
   → LocalToolBackend
       → OpenClawBackend
+      → SkillsBackend → OpenClaw Gateway (live status)
+                      → QMD MCP (optional semantic discovery)
       → NativeBackend / other backend（后续按需）
 ```
 
-Google Drive 数据交换将在核心 MCP 链路之后接入；Skills 延后。
+Skills backend 只做 capability discovery/read；QMD 仅是候选检索加速器，实时 OpenClaw inventory
+始终是 eligibility、model visibility 和 canonical Skill 路径的事实源。
+
+### Skills semantic discovery
+
+推荐把 semantic catalog 放在独立 QMD named index，而不是共享 memory index。QMD 2.5.3 的 vector ANN 会先在整个 index 取候选、再应用 collection filter；把几十条 Skill 混进数万条 memory 文档会让小 collection 被全库候选淹没。
+
+当前部署使用：
+
+```text
+local catalog: <workspace>/skills-catalog/
+M4 mirror:     ~/qmd-data/skills-chatgpt-web-agent/
+QMD index:     skills-chatgpt-web-agent
+collection:    skills-chatgpt-web-agent
+MCP endpoint:  http://192.168.0.96:8182/mcp
+```
+
+检索使用 Qwen3-Embedding-0.6B、vector-only、`rerank=false`，不做 query expansion / HyDE。QMD 命中只是候选；返回前仍与 live `skills.status` 取交集。catalog schema/inventory 通过 `catalogHash` 做 generation 失效，QMD 不可用或 catalog stale 时自动回退到 live names-only catalog。
 
 ## Google Drive
 
