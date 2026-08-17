@@ -25,4 +25,17 @@ describe("loadBridgeConfig", () => {
     expect(config.execAsk).toBe("off");
     expect(config.workspaceOnly).toBe(false);
   });
+
+  it("enables Google Drive with workspace-local credential and staging defaults", () => {
+    const config = loadBridgeConfig(
+      { CHATGPT_WEB_AGENT_DRIVE_ENABLED: "true" },
+      "/tmp/workspace",
+    );
+    expect(config.googleDrive).toEqual({
+      credentialsPath: path.resolve("/tmp/workspace/.credentials/google-drive/credentials.json"),
+      tokenPath: path.resolve("/tmp/workspace/.credentials/google-drive/token.json"),
+      localRoot: path.resolve("/tmp/workspace/exchange"),
+      localRootOnly: true,
+    });
+  });
 });
