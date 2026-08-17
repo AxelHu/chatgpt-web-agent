@@ -24,7 +24,6 @@
     "node": ">=22.22.3 <23 || >=24.15.0 <25 || >=25.9.0"
   },
   "dependencies": {
-    "@google-cloud/local-auth": "^3.0.1",
     "@modelcontextprotocol/sdk": "1.29.0",
     "googleapis": "^174.0.1",
     "openclaw": "2026.7.1-2"
