@@ -1,0 +1,164 @@
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+import {
+  createOpenClawCodingTools,
+  type AnyAgentTool,
+} from "openclaw/plugin-sdk/agent-harness";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { BridgeConfig } from "../config.js";
+import { normalizeToolResult, toolError } from "../result.js";
+import type { JsonSchema, LocalToolBackend, LocalToolDescriptor, ToolCallContext } from "./types.js";
+
+const INTERNAL_EXEC_FIELDS = new Set(["host", "security", "ask", "node", "elevated"]);
+
+type ExecutableTool = AnyAgentTool & {
+  prepareBeforeToolCallParams?: (
+    args: Record<string, unknown>,
+    context: { toolCallId: string; signal?: AbortSignal },
+  ) => Promise<Record<string, unknown>> | Record<string, unknown>;
+  finalizeBeforeToolCallParams?: (
+    args: Record<string, unknown>,
+    prepared: Record<string, unknown>,
+  ) => Record<string, unknown>;
+};
+
+function cloneSchema(schema: unknown): JsonSchema {
+  if (!schema || typeof schema !== "object") {
+    return { type: "object", properties: {} };
+  }
+  return structuredClone(schema) as JsonSchema;
+}
+
+function publicSchemaFor(tool: ExecutableTool): JsonSchema {
+  const schema = cloneSchema(tool.parameters);
+  if (tool.name !== "exec") {
+    return schema;
+  }
+  const properties = schema.properties;
+  if (properties && typeof properties === "object" && !Array.isArray(properties)) {
+    for (const field of INTERNAL_EXEC_FIELDS) {
+      delete (properties as Record<string, unknown>)[field];
+    }
+  }
+  return schema;
+}
+
+function isInside(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function sanitizeExecArgs(
+  args: Record<string, unknown>,
+  workspaceDir: string,
+): Record<string, unknown> {
+  const sanitized = { ...args };
+  for (const field of INTERNAL_EXEC_FIELDS) {
+    delete sanitized[field];
+  }
+  const requestedWorkdir = typeof sanitized.workdir === "string" ? sanitized.workdir.trim() : "";
+  const workdir = path.resolve(workspaceDir, requestedWorkdir || ".");
+  if (!isInside(workspaceDir, workdir)) {
+    throw new Error(`exec workdir must stay inside workspace: ${workspaceDir}`);
+  }
+  sanitized.workdir = workdir;
+  return sanitized;
+}
+
+function createToolRuntimeConfig(config: BridgeConfig) {
+  return {
+    tools: {
+      fs: {
+        workspaceOnly: true,
+      },
+      exec: {
+        security: config.execSecurity ?? ("allowlist" as const),
+        ask: config.execAsk ?? ("on-miss" as const),
+        applyPatch: {
+          workspaceOnly: true,
+        },
+      },
+    },
+  };
+}
+
+function resolveExecDefaults(
+  config: BridgeConfig,
+  runtimeConfig: ReturnType<typeof createToolRuntimeConfig>,
+) {
+  const exec = runtimeConfig.tools?.exec;
+  return {
+    host: "gateway" as const,
+    security: config.execSecurity ?? exec.security,
+    ask: config.execAsk ?? exec.ask,
+  };
+}
+
+export class OpenClawBackend implements LocalToolBackend {
+  readonly id = "openclaw";
+  readonly #config: BridgeConfig;
+  readonly #tools: Map<string, ExecutableTool>;
+
+  constructor(config: BridgeConfig) {
+    this.#config = config;
+    const runtimeConfig = createToolRuntimeConfig(config);
+    const tools = createOpenClawCodingTools({
+      agentId: "chatgpt-web-agent",
+      sessionKey: `agent:chatgpt-web-agent:mcp:${process.pid}`,
+      sessionId: randomUUID(),
+      workspaceDir: config.workspaceDir,
+      cwd: config.workspaceDir,
+      config: runtimeConfig,
+      exec: resolveExecDefaults(config, runtimeConfig),
+      toolConstructionPlan: {
+        includeBaseCodingTools: true,
+        includeShellTools: true,
+        includeChannelTools: false,
+        includeOpenClawTools: false,
+        includePluginTools: false,
+      },
+    });
+    this.#tools = new Map(
+      tools
+        .filter((tool) => config.toolAllowlist.has(tool.name))
+        .map((tool) => [tool.name, tool as ExecutableTool]),
+    );
+  }
+
+  async listTools(): Promise<LocalToolDescriptor[]> {
+    return [...this.#tools.values()].map((tool) => ({
+      name: tool.name,
+      title: tool.label,
+      description: tool.description,
+      inputSchema: publicSchemaFor(tool),
+    }));
+  }
+
+  async callTool(
+    name: string,
+    args: Record<string, unknown>,
+    context: ToolCallContext,
+  ): Promise<CallToolResult> {
+    const tool = this.#tools.get(name);
+    if (!tool) {
+      return toolError(`Tool not available: ${name}`);
+    }
+    try {
+      const publicArgs = name === "exec" ? sanitizeExecArgs(args, this.#config.workspaceDir) : args;
+      const prepared = tool.prepareBeforeToolCallParams
+        ? await tool.prepareBeforeToolCallParams(publicArgs, {
+            toolCallId: context.callId,
+            signal: context.signal,
+          })
+        : publicArgs;
+      const finalized = tool.finalizeBeforeToolCallParams
+        ? tool.finalizeBeforeToolCallParams(prepared, prepared)
+        : prepared;
+      const result = await tool.execute(context.callId, finalized, context.signal);
+      return normalizeToolResult(result, this.#config.maxOutputChars);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return toolError(`${name} failed: ${message}`);
+    }
+  }
+}

@@ -1,0 +1,50 @@
+import { randomUUID } from "node:crypto";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+  type CallToolResult,
+} from "@modelcontextprotocol/sdk/types.js";
+import type { LocalToolBackend } from "./backend/types.js";
+import { toolError } from "./result.js";
+
+export type LocalMcpServer = {
+  server: Server;
+  serveStdio(): Promise<void>;
+  close(): Promise<void>;
+};
+
+export function createLocalMcpServer(backend: LocalToolBackend): LocalMcpServer {
+  const server = new Server(
+    { name: "chatgpt-web-agent", version: "0.1.0" },
+    { capabilities: { tools: {} } },
+  );
+
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: await backend.listTools(),
+  }));
+
+  server.setRequestHandler(CallToolRequestSchema, async (request): Promise<CallToolResult> => {
+    const name = request.params.name;
+    const args = request.params.arguments;
+    if (args !== undefined && (typeof args !== "object" || args === null || Array.isArray(args))) {
+      return toolError("Tool arguments must be an object");
+    }
+    return backend.callTool(name, (args ?? {}) as Record<string, unknown>, {
+      callId: `mcp-${randomUUID()}`,
+    });
+  });
+
+  return {
+    server,
+    serveStdio: async () => {
+      const transport = new StdioServerTransport();
+      await server.connect(transport);
+    },
+    close: async () => {
+      await backend.close?.();
+      await server.close();
+    },
+  };
+}
