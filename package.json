@@ -1,0 +1,38 @@
+{
+  "name": "@agents/chatgpt-web-agent",
+  "version": "0.1.0",
+  "description": "Local MCP bridge that gives ChatGPT Web controlled access to local tool backends.",
+  "type": "module",
+  "bin": {
+    "chatgpt-web-agent": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "start": "node dist/cli.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "rm -rf dist && pnpm build && pnpm test",
+    "smoke": "tsx scripts/mcp-smoke.ts",
+    "drive:auth": "tsx scripts/google-drive-auth.ts"
+  },
+  "engines": {
+    "node": ">=22.22.3 <23 || >=24.15.0 <25 || >=25.9.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "googleapis": "^174.0.1",
+    "openclaw": "2026.7.1-2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.9"
+  },
+  "license": "MIT"
+}
