@@ -2,6 +2,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
+import { createHash, randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { google } from "googleapis";
@@ -70,10 +71,16 @@ async function main(): Promise<void> {
   baseRedirect.port = String(address.port);
   const redirectUri = baseRedirect.toString();
   const client = new google.auth.OAuth2(keys.client_id, keys.client_secret, redirectUri);
+  const state = randomBytes(32).toString("base64url");
+  const codeVerifier = randomBytes(64).toString("base64url");
+  const codeChallenge = createHash("sha256").update(codeVerifier).digest("base64url");
   const authorizeUrl = client.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
     scope: SCOPES,
+    state,
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
   });
 
   process.stdout.write(`Opening Google OAuth in the local browser. Callback: ${redirectUri}\n`);
@@ -94,6 +101,14 @@ async function main(): Promise<void> {
           response.end("Invalid callback path");
           return;
         }
+        if (requestUrl.searchParams.get("state") !== state) {
+          response.statusCode = 400;
+          response.end("OAuth state validation failed. You may close this tab.");
+          clearTimeout(timeout);
+          reject(new Error("Google OAuth callback state did not match the authorization request"));
+          server.close();
+          return;
+        }
         const oauthError = requestUrl.searchParams.get("error");
         if (oauthError) {
           response.statusCode = 400;
@@ -110,7 +125,11 @@ async function main(): Promise<void> {
           return;
         }
 
-        const { tokens } = await client.getToken({ code, redirect_uri: redirectUri });
+        const { tokens } = await client.getToken({
+          code,
+          redirect_uri: redirectUri,
+          codeVerifier,
+        });
         client.setCredentials(tokens);
         response.end("Google Drive authorization succeeded. You may close this tab and return to ChatGPT.");
         clearTimeout(timeout);
