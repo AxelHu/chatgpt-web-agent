@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import { CompositeBackend } from "./backend/composite.js";
+import { GoogleDriveBackend } from "./backend/google-drive.js";
 import { OpenClawBackend } from "./backend/openclaw.js";
+import type { LocalToolBackend } from "./backend/types.js";
 import { loadBridgeConfig } from "./config.js";
 import { createLocalMcpServer } from "./server.js";
 
@@ -11,7 +14,12 @@ async function main(): Promise<void> {
     throw new Error(`workspace is not a directory: ${config.workspaceDir}`);
   }
 
-  const backend = new OpenClawBackend(config);
+  const backends: LocalToolBackend[] = [new OpenClawBackend(config)];
+  if (config.googleDrive) {
+    fs.mkdirSync(config.googleDrive.localRoot, { recursive: true });
+    backends.push(new GoogleDriveBackend(config.googleDrive));
+  }
+  const backend = new CompositeBackend(backends);
   const localServer = createLocalMcpServer(backend);
   let closing = false;
   const close = async () => {

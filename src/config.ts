@@ -9,6 +9,14 @@ export type BridgeConfig = {
   maxOutputChars: number;
   execSecurity?: "deny" | "allowlist" | "full";
   execAsk?: "off" | "on-miss" | "always";
+  googleDrive?: GoogleDriveConfig;
+};
+
+export type GoogleDriveConfig = {
+  credentialsPath: string;
+  tokenPath: string;
+  localRoot: string;
+  localRootOnly: boolean;
 };
 
 function readBoolean(value: string | undefined, fallback: boolean, name: string): boolean {
@@ -63,6 +71,32 @@ export function loadBridgeConfig(
     throw new Error("CHATGPT_WEB_AGENT_TOOLS must contain at least one tool name");
   }
 
+  const driveEnabled = readBoolean(
+    env.CHATGPT_WEB_AGENT_DRIVE_ENABLED,
+    false,
+    "CHATGPT_WEB_AGENT_DRIVE_ENABLED",
+  );
+  const googleDrive = driveEnabled
+    ? {
+        credentialsPath: path.resolve(
+          env.CHATGPT_WEB_AGENT_DRIVE_CREDENTIALS?.trim() ||
+            path.join(workspaceDir, ".credentials/google-drive/credentials.json"),
+        ),
+        tokenPath: path.resolve(
+          env.CHATGPT_WEB_AGENT_DRIVE_TOKEN?.trim() ||
+            path.join(workspaceDir, ".credentials/google-drive/token.json"),
+        ),
+        localRoot: path.resolve(
+          env.CHATGPT_WEB_AGENT_DRIVE_LOCAL_ROOT?.trim() || path.join(workspaceDir, "exchange"),
+        ),
+        localRootOnly: readBoolean(
+          env.CHATGPT_WEB_AGENT_DRIVE_LOCAL_ROOT_ONLY,
+          true,
+          "CHATGPT_WEB_AGENT_DRIVE_LOCAL_ROOT_ONLY",
+        ),
+      }
+    : undefined;
+
   return {
     workspaceDir,
     workspaceOnly: readBoolean(
@@ -82,5 +116,6 @@ export function loadBridgeConfig(
       ["off", "on-miss", "always"] as const,
       "CHATGPT_WEB_AGENT_EXEC_ASK",
     ),
+    googleDrive,
   };
 }

@@ -6,12 +6,22 @@
 
 ## 当前状态
 
-P0 提供四个工具：
+P0 提供四个 OpenClaw 工具：
 
 - `read`
 - `exec`
 - `process`
 - `apply_patch`
+
+可选启用 Google Drive 文件交换工具：
+
+- `drive_list`
+- `drive_search`
+- `drive_stat`
+- `drive_upload`
+- `drive_download`
+- `drive_export`
+- `drive_mkdir`
 
 默认只允许文件和补丁工具访问配置的 workspace；`exec.workdir` 也必须位于 workspace 内。OpenClaw 内部的 `host/security/ask/node/elevated` 参数不会暴露给 MCP 客户端。
 
@@ -77,3 +87,40 @@ ChatGPT Web
 ```
 
 Google Drive 数据交换将在核心 MCP 链路之后接入；Skills 延后。
+
+## Google Drive
+
+Drive 是可选的数据通道，不做后台同步、磁盘挂载或整盘镜像。实现直接使用 Google Drive API v3，MCP 只暴露小而稳定的文件操作原语。
+
+默认情况下，Drive 的本地上传/下载/导出路径只能位于：
+
+```text
+<CHATGPT_WEB_AGENT_WORKSPACE>/exchange
+```
+
+该限制独立于 `CHATGPT_WEB_AGENT_WORKSPACE_ONLY`，用于降低 Drive 工具被误用为任意本地数据外传通道的风险。确有需要时可由部署者通过 `CHATGPT_WEB_AGENT_DRIVE_LOCAL_ROOT` 和 `CHATGPT_WEB_AGENT_DRIVE_LOCAL_ROOT_ONLY` 调整。
+
+### 一次性 OAuth 配置
+
+1. 在 Google Cloud 中启用 Drive API，并创建 Desktop OAuth client。
+2. 将下载的 OAuth JSON 保存为：
+
+   ```text
+   <workspace>/.credentials/google-drive/credentials.json
+   ```
+
+   或设置 `CHATGPT_WEB_AGENT_DRIVE_CREDENTIALS` 指向其他本地私有路径。
+3. 运行：
+
+   ```bash
+   CHATGPT_WEB_AGENT_WORKSPACE=/path/to/workspace pnpm drive:auth
+   ```
+
+   浏览器授权完成后会生成权限为 `0600` 的 authorized-user token。OAuth client secret 和 refresh token 不应提交到 Git，也不会通过 MCP 返回。
+4. 启动服务时设置：
+
+   ```bash
+   export CHATGPT_WEB_AGENT_DRIVE_ENABLED=true
+   ```
+
+Drive 工具中的 `folderId` / `fileId` 直接使用 Drive API ID。普通二进制文件使用 `drive_download`；Google Docs/Sheets/Slides 使用 `drive_export` 导出到指定 MIME type。
