@@ -14,11 +14,17 @@ type GatewayActionResult = Record<string, unknown> & {
 
 type FeishuAccountStatus = {
   accountId: string;
+  name?: string;
   enabled?: boolean;
   configured?: boolean;
   running?: boolean;
   connected?: boolean;
   lastError?: string | null;
+  probe?: {
+    ok?: boolean;
+    botName?: string;
+    botOpenId?: string;
+  };
 };
 
 type ChannelsStatus = {
@@ -32,6 +38,7 @@ type FeishuMention = {
 
 export type FeishuBackendDeps = {
   getAccountStatus: (signal?: AbortSignal) => Promise<FeishuAccountStatus | undefined>;
+  getBotAccountStatuses: (signal?: AbortSignal) => Promise<FeishuAccountStatus[]>;
   requestAction: (
     action: string,
     params: Record<string, unknown>,
@@ -246,6 +253,58 @@ function normalizePeerEntries(raw: unknown): Array<Record<string, unknown>> {
     }));
 }
 
+function normalizeBotEntries(
+  raw: unknown,
+  query: string | undefined,
+  limit: number,
+): Array<Record<string, unknown>> {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const q = query?.trim().toLowerCase() ?? "";
+  const entries: Array<Record<string, unknown>> = [];
+  for (const value of raw) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      continue;
+    }
+    const account = value as FeishuAccountStatus;
+    const openId = account.probe?.botOpenId?.trim();
+    if (
+      account.configured !== true ||
+      account.enabled === false ||
+      account.probe?.ok !== true ||
+      !openId ||
+      !FEISHU_OPEN_ID_RE.test(openId)
+    ) {
+      continue;
+    }
+    const botName = account.probe?.botName?.trim();
+    const accountName = account.name?.trim();
+    const name = botName || accountName || account.accountId;
+    if (q) {
+      const haystack = [account.accountId, accountName, botName, openId]
+        .filter((part): part is string => Boolean(part))
+        .join("\n")
+        .toLowerCase();
+      if (!haystack.includes(q)) {
+        continue;
+      }
+    }
+    entries.push({
+      accountId: account.accountId,
+      openId,
+      name,
+      mention: { openId, name },
+      ...(account.running !== undefined ? { running: account.running } : {}),
+      ...(account.connected !== undefined ? { connected: account.connected } : {}),
+    });
+    if (entries.length >= limit) {
+      break;
+    }
+  }
+  return entries;
+}
+
 function normalizeMembers(raw: unknown): {
   members: Array<Record<string, unknown>>;
   hasMore: boolean;
@@ -294,6 +353,18 @@ function createDefaultDeps(config: FeishuConfig): FeishuBackendDeps {
         signal,
       });
       return status.channelAccounts?.feishu?.find((account) => account.accountId === config.accountId);
+    },
+    getBotAccountStatuses: async (signal) => {
+      const status = await requestOpenClawGateway<ChannelsStatus>({
+        gatewayUrl: config.gatewayUrl,
+        requestTimeoutMs: config.requestTimeoutMs,
+        clientDisplayName: "ChatGPT Web Agent Feishu Bot Directory",
+        scopes: ["operator.read"],
+        method: "channels.status",
+        params: { channel: "feishu", probe: true, timeoutMs: config.requestTimeoutMs },
+        signal,
+      });
+      return status.channelAccounts?.feishu ?? [];
     },
     requestAction: async (action, params, signal) =>
       requestOpenClawGateway<GatewayActionResult>({
@@ -373,16 +444,16 @@ export class FeishuBackend implements LocalToolBackend {
         name: "feishu_directory",
         title: "Feishu Directory",
         description:
-          "Discover Feishu groups, people, or members visible to the fixed ChatGPT Web Agent bot. Results include ready-to-use explicit targets and mention objects.",
+          "Discover Feishu groups, people, group members, or OpenClaw Feishu bots. Bot results come from OpenClaw channel probes and include ready-to-use mention objects.",
         inputSchema: {
           type: "object",
           additionalProperties: false,
           required: ["kind"],
           properties: {
-            kind: { type: "string", enum: ["groups", "peers", "members"] },
+            kind: { type: "string", enum: ["groups", "peers", "members", "bots"] },
             query: {
               type: "string",
-              description: "Optional name query for groups or peers.",
+              description: "Optional name/account query for groups, peers, or bots.",
             },
             target: {
               type: "string",
@@ -474,11 +545,11 @@ export class FeishuBackend implements LocalToolBackend {
   }
 
   async #directory(args: Record<string, unknown>, signal?: AbortSignal): Promise<CallToolResult> {
-    const kind = enumArg(args, "kind", ["groups", "peers", "members"] as const, "groups");
+    const kind = enumArg(args, "kind", ["groups", "peers", "members", "bots"] as const, "groups");
     const limit = integerArg(
       args,
       "limit",
-      this.#config.defaultDirectoryLimit,
+      kind === "bots" ? this.#config.maxDirectoryLimit : this.#config.defaultDirectoryLimit,
       1,
       this.#config.maxDirectoryLimit,
     );
@@ -513,6 +584,26 @@ export class FeishuBackend implements LocalToolBackend {
       });
     }
 
+    if (kind === "bots") {
+      if (stringArg(args, "target")) {
+        throw new Error("target is only supported for kind=members");
+      }
+      if (stringArg(args, "pageToken")) {
+        throw new Error("pageToken is only supported for kind=members");
+      }
+      const accounts = await this.#deps.getBotAccountStatuses(signal);
+      this.#assertFixedIdentityAccount(
+        accounts.find((account) => account.accountId === this.#config.accountId),
+      );
+      const entries = normalizeBotEntries(accounts, query, limit);
+      return jsonResult({
+        kind,
+        accountId: this.#config.accountId,
+        count: entries.length,
+        entries,
+      });
+    }
+
     if (stringArg(args, "target")) {
       throw new Error("target is only supported for kind=members");
     }
@@ -538,7 +629,10 @@ export class FeishuBackend implements LocalToolBackend {
   }
 
   async #assertFixedIdentity(signal?: AbortSignal): Promise<void> {
-    const account = await this.#deps.getAccountStatus(signal);
+    this.#assertFixedIdentityAccount(await this.#deps.getAccountStatus(signal));
+  }
+
+  #assertFixedIdentityAccount(account: FeishuAccountStatus | undefined): void {
     if (!account || account.accountId !== this.#config.accountId) {
       throw new Error(
         `fixed Feishu account "${this.#config.accountId}" is not configured; refusing to fall back to another account`,
