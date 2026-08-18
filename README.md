@@ -42,7 +42,7 @@ MCP initialize instructions 还会提示客户端：仅当任务明显可能依�
 
 飞书接口刻意不复用通用 `message` 工具的宽 schema。发送账号由部署配置固定，调用方不能选择
 `accountId`；目标必须显式使用 `chat:oc_...` 或 `user:ou_...`。`feishu_directory`
-用于发现群、用户与群成员，并返回可以直接用于后续调用的 target / mention 数据。
+用于发现群、用户、群成员与 OpenClaw named Feishu bots，并返回可以直接用于后续调用的 target / mention 数据。
 
 默认只允许文件和补丁工具访问配置的 workspace；`exec.workdir` 也必须位于 workspace 内。OpenClaw 内部的 `host/security/ask/node/elevated` 参数不会暴露给 MCP 客户端。
 
@@ -200,11 +200,14 @@ action，因此不会在目标账号缺失时借用 `main` 或其他 agent 身�
 真实路径以阻止 `..` 与 symlink 逃逸。OpenClaw Gateway 自己的 agent-scoped media root policy
 仍会再次校验，因此如果部署者把该目录改到 OpenClaw 不允许的范围，请求仍会失败而不是扩大权限。
 
-`feishu_directory` 支持三类发现：
+`feishu_directory` 支持四类发现：
 
 - `kind="groups"`：群列表/名称查询，返回 `chat:oc_...` target；
 - `kind="peers"`：可见用户查询，返回 `user:ou_...` 和可直接复用的 mention；
 - `kind="members"`：指定 `chat:oc_...` 后列出群成员及 open_id，支持分页。
+- `kind="bots"`：通过 OpenClaw `channels.status(probe=true)` 查询 named Feishu bot 身份，按 account/name 搜索并返回可直接用于 `mentions` 的 `botOpenId`；仅投影 account/name/open_id/运行状态等安全字段，不返回 app secret。未显式传 `limit` 时默认覆盖当前配置允许的完整小型 bot 目录。
+
+飞书的群成员 API 不返回机器人成员，因此需要 @ 其他 OpenClaw agent 时应使用 `kind="bots"`，而不是依赖 `kind="members"` 查找机器人。
 
 实现复用正在运行的 OpenClaw Gateway，而不是读取飞书 `appSecret` 或自行维护 token。当前只提供
 主动外发和目录发现，不接收飞书入站消息；入站到 ChatGPT 网页会话的路由需要单独解决“绑定到哪个

@@ -39,11 +39,27 @@ describe("FeishuBackend", () => {
       running: true,
       connected: true,
     })),
+    getBotAccountStatuses = vi.fn<FeishuBackendDeps["getBotAccountStatuses"]>(async () => [
+      {
+        accountId: "chatgpt-web-agent",
+        name: "游爪",
+        enabled: true,
+        configured: true,
+        running: true,
+        connected: true,
+        probe: {
+          ok: true,
+          botName: "游爪",
+          botOpenId: "ou_web_agent",
+        },
+      },
+    ]),
   ) {
     return {
-      backend: new FeishuBackend(config, { requestAction, getAccountStatus }),
+      backend: new FeishuBackend(config, { requestAction, getAccountStatus, getBotAccountStatuses }),
       requestAction,
       getAccountStatus,
+      getBotAccountStatuses,
     };
   }
 
@@ -56,6 +72,10 @@ describe("FeishuBackend", () => {
     };
     expect(sendSchema.properties).not.toHaveProperty("accountId");
     expect(sendSchema.properties).not.toHaveProperty("channel");
+    const directorySchema = tools.find((tool) => tool.name === "feishu_directory")?.inputSchema as {
+      properties?: Record<string, { enum?: string[] }>;
+    };
+    expect(directorySchema.properties?.kind?.enum).toEqual(["groups", "peers", "members", "bots"]);
   });
 
   it("sends with an explicit target and renders real Feishu mention markup", async () => {
@@ -229,6 +249,89 @@ describe("FeishuBackend", () => {
         },
       ],
     });
+  });
+
+  it("discovers OpenClaw Feishu bots with ready-to-use mention objects", async () => {
+    const getBotAccountStatuses = vi.fn<FeishuBackendDeps["getBotAccountStatuses"]>(async () => [
+      {
+        accountId: "chatgpt-web-agent",
+        name: "游爪",
+        enabled: true,
+        configured: true,
+        running: true,
+        connected: true,
+        probe: { ok: true, botName: "游爪", botOpenId: "ou_web_agent" },
+      },
+      {
+        accountId: "qa",
+        name: "测试虾",
+        enabled: true,
+        configured: true,
+        running: true,
+        connected: true,
+        probe: { ok: true, botName: "测试虾", botOpenId: "ou_qa_bot" },
+      },
+      {
+        accountId: "disabled",
+        enabled: false,
+        configured: true,
+        probe: { ok: true, botName: "Disabled", botOpenId: "ou_disabled" },
+      },
+    ]);
+    const { backend: instance, requestAction } = backend(
+      vi.fn<FeishuBackendDeps["requestAction"]>(),
+      undefined,
+      getBotAccountStatuses,
+    );
+    const result = await instance.callTool(
+      "feishu_directory",
+      { kind: "bots", query: "测试", limit: 5 },
+      { callId: "bots" },
+    );
+    expect(getBotAccountStatuses).toHaveBeenCalledWith(undefined);
+    expect(requestAction).not.toHaveBeenCalled();
+    expect(result.structuredContent).toMatchObject({
+      kind: "bots",
+      accountId: "chatgpt-web-agent",
+      count: 1,
+      entries: [
+        {
+          accountId: "qa",
+          openId: "ou_qa_bot",
+          name: "测试虾",
+          mention: { openId: "ou_qa_bot", name: "测试虾" },
+          running: true,
+          connected: true,
+        },
+      ],
+    });
+  });
+
+  it("fails closed for bot discovery when the fixed sender account is absent", async () => {
+    const getBotAccountStatuses = vi.fn<FeishuBackendDeps["getBotAccountStatuses"]>(async () => [
+      {
+        accountId: "qa",
+        enabled: true,
+        configured: true,
+        probe: { ok: true, botName: "测试虾", botOpenId: "ou_qa_bot" },
+      },
+    ]);
+    const { backend: instance, requestAction } = backend(
+      vi.fn<FeishuBackendDeps["requestAction"]>(),
+      undefined,
+      getBotAccountStatuses,
+    );
+    const result = await instance.callTool(
+      "feishu_directory",
+      { kind: "bots" },
+      { callId: "bots-missing-sender" },
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0]).toMatchObject({
+      type: "text",
+      text: expect.stringContaining("refusing to fall back to another account"),
+    });
+    expect(requestAction).not.toHaveBeenCalled();
   });
 
   it("lists members of an explicit group and preserves pagination", async () => {
