@@ -1,0 +1,12 @@
+[Unit]
+Description=Publish ChatGPT Sites status snapshot every 10 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+Persistent=true
+AccuracySec=30s
+Unit=chatgpt-sites-status-publish.service
+
+[Install]
+WantedBy=timers.target

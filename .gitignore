@@ -7,3 +7,6 @@ coverage/
 *.log
 .openclaw/
 .credentials/
+
+__pycache__/
+*.pyc
