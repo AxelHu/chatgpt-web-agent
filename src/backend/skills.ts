@@ -4,8 +4,8 @@ import path from "node:path";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { GatewayClient } from "openclaw/plugin-sdk/gateway-runtime";
 import type { SkillsConfig } from "../config.js";
+import { requestOpenClawGateway } from "../gateway.js";
 import { toolError } from "../result.js";
 import type { LocalToolBackend, LocalToolDescriptor, ToolCallContext } from "./types.js";
 
@@ -193,66 +193,19 @@ function truncateText(text: string, maxChars: number): string {
 }
 
 async function fetchStatusFromGateway(config: SkillsConfig, signal?: AbortSignal): Promise<SkillsStatus> {
-  let readyResolve: (() => void) | undefined;
-  let readyReject: ((error: Error) => void) | undefined;
-  let settled = false;
-  const ready = new Promise<void>((resolve, reject) => {
-    readyResolve = resolve;
-    readyReject = reject;
-  });
-  const settleReady = (error?: Error) => {
-    if (settled) {
-      return;
-    }
-    settled = true;
-    if (error) {
-      readyReject?.(error);
-    } else {
-      readyResolve?.();
-    }
-  };
-  const client = new GatewayClient({
-    url: config.gatewayUrl,
-    clientName: "gateway-client",
-    clientDisplayName: "ChatGPT Web Agent Skills",
-    mode: "backend",
-    role: "operator",
-    scopes: ["operator.read"],
+  const result = await requestOpenClawGateway<SkillsStatus>({
+    gatewayUrl: config.gatewayUrl,
     requestTimeoutMs: config.requestTimeoutMs,
-    onHelloOk: () => settleReady(),
-    onConnectError: (error) => settleReady(error),
-    onReconnectPaused: (info) =>
-      settleReady(new Error(`gateway reconnect paused: ${info.detailCode ?? info.reason}`)),
-    onClose: (_code, reason, info) => {
-      if (info?.phase === "pre-hello") {
-        settleReady(new Error(`gateway closed before authentication: ${reason || "no reason"}`));
-      }
-    },
+    clientDisplayName: "ChatGPT Web Agent Skills",
+    scopes: ["operator.read"],
+    method: "skills.status",
+    params: { agentId: config.agentId },
+    signal,
   });
-  const timeout = setTimeout(
-    () => settleReady(new Error(`gateway connection timed out after ${config.requestTimeoutMs}ms`)),
-    config.requestTimeoutMs,
-  );
-  timeout.unref?.();
-  const abort = () => settleReady(Object.assign(new Error("gateway request aborted"), { name: "AbortError" }));
-  signal?.addEventListener("abort", abort, { once: true });
-  client.start();
-  try {
-    await ready;
-    const result = await client.request<SkillsStatus>(
-      "skills.status",
-      { agentId: config.agentId },
-      { signal, timeoutMs: config.requestTimeoutMs },
-    );
-    if (!result || !Array.isArray(result.skills)) {
-      throw new Error("gateway returned an invalid skills.status payload");
-    }
-    return result;
-  } finally {
-    clearTimeout(timeout);
-    signal?.removeEventListener("abort", abort);
-    await client.stopAndWait({ timeoutMs: 1_000 }).catch(() => undefined);
+  if (!result || !Array.isArray(result.skills)) {
+    throw new Error("gateway returned an invalid skills.status payload");
   }
+  return result;
 }
 
 async function semanticSearchQmd(

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import { CompositeBackend } from "./backend/composite.js";
+import { FeishuBackend } from "./backend/feishu.js";
 import { GoogleDriveBackend } from "./backend/google-drive.js";
 import { OpenClawBackend } from "./backend/openclaw.js";
 import { SkillsBackend } from "./backend/skills.js";
@@ -23,6 +24,9 @@ async function main(): Promise<void> {
   if (config.googleDrive) {
     fs.mkdirSync(config.googleDrive.localRoot, { recursive: true });
     backends.push(new GoogleDriveBackend(config.googleDrive));
+  }
+  if (config.feishu) {
+    backends.push(new FeishuBackend(config.feishu));
   }
   const backend = new CompositeBackend(backends);
   const localServer = createLocalMcpServer(backend);

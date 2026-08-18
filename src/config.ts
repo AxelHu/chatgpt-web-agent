@@ -11,6 +11,7 @@ export type BridgeConfig = {
   execAsk?: "off" | "on-miss" | "always";
   googleDrive?: GoogleDriveConfig;
   skills?: SkillsConfig;
+  feishu?: FeishuConfig;
 };
 
 export type GoogleDriveConfig = {
@@ -30,6 +31,17 @@ export type SkillsConfig = {
   maxLimit: number;
   requestTimeoutMs: number;
   maxSkillFileBytes: number;
+};
+
+export type FeishuConfig = {
+  agentId: string;
+  accountId: string;
+  gatewayUrl: string;
+  requestTimeoutMs: number;
+  mediaRoot: string;
+  mediaRootOnly: boolean;
+  defaultDirectoryLimit: number;
+  maxDirectoryLimit: number;
 };
 
 function readBoolean(value: string | undefined, fallback: boolean, name: string): boolean {
@@ -147,6 +159,47 @@ export function loadBridgeConfig(
       }
     : undefined;
 
+  const feishuEnabled = readBoolean(
+    env.CHATGPT_WEB_AGENT_FEISHU_ENABLED,
+    false,
+    "CHATGPT_WEB_AGENT_FEISHU_ENABLED",
+  );
+  const feishuDefaultDirectoryLimit = readPositiveInteger(
+    env.CHATGPT_WEB_AGENT_FEISHU_DIRECTORY_DEFAULT_LIMIT,
+    20,
+  );
+  const feishuMaxDirectoryLimit = readPositiveInteger(
+    env.CHATGPT_WEB_AGENT_FEISHU_DIRECTORY_MAX_LIMIT,
+    100,
+  );
+  if (feishuDefaultDirectoryLimit > feishuMaxDirectoryLimit) {
+    throw new Error(
+      "CHATGPT_WEB_AGENT_FEISHU_DIRECTORY_DEFAULT_LIMIT must not exceed CHATGPT_WEB_AGENT_FEISHU_DIRECTORY_MAX_LIMIT",
+    );
+  }
+  const feishu = feishuEnabled
+    ? {
+        agentId: env.CHATGPT_WEB_AGENT_FEISHU_AGENT_ID?.trim() || "chatgpt-web-agent",
+        accountId: env.CHATGPT_WEB_AGENT_FEISHU_ACCOUNT_ID?.trim() || "chatgpt-web-agent",
+        gatewayUrl:
+          env.CHATGPT_WEB_AGENT_FEISHU_GATEWAY_URL?.trim() || "ws://127.0.0.1:18789",
+        requestTimeoutMs: readPositiveInteger(
+          env.CHATGPT_WEB_AGENT_FEISHU_TIMEOUT_MS,
+          10_000,
+        ),
+        mediaRoot: path.resolve(
+          env.CHATGPT_WEB_AGENT_FEISHU_MEDIA_ROOT?.trim() || workspaceDir,
+        ),
+        mediaRootOnly: readBoolean(
+          env.CHATGPT_WEB_AGENT_FEISHU_MEDIA_ROOT_ONLY,
+          true,
+          "CHATGPT_WEB_AGENT_FEISHU_MEDIA_ROOT_ONLY",
+        ),
+        defaultDirectoryLimit: feishuDefaultDirectoryLimit,
+        maxDirectoryLimit: feishuMaxDirectoryLimit,
+      }
+    : undefined;
+
   return {
     workspaceDir,
     workspaceOnly: readBoolean(
@@ -168,5 +221,6 @@ export function loadBridgeConfig(
     ),
     googleDrive,
     skills,
+    feishu,
   };
 }
