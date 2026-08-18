@@ -251,7 +251,12 @@ function normalizeMembers(raw: unknown): {
   hasMore: boolean;
   pageToken?: string;
 } {
-  const container = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const outer = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const nested = outer.members;
+  const container =
+    nested && typeof nested === "object" && !Array.isArray(nested)
+      ? (nested as Record<string, unknown>)
+      : outer;
   const list = Array.isArray(container.members) ? container.members : [];
   const members = list
     .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object")
@@ -498,7 +503,7 @@ export class FeishuBackend implements LocalToolBackend {
       if (result.ok === false) {
         throw new Error(actionErrorMessage(result));
       }
-      const normalized = normalizeMembers(result.members);
+      const normalized = normalizeMembers(result);
       return jsonResult({
         kind,
         accountId: this.#config.accountId,

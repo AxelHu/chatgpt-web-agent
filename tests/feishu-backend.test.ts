@@ -234,12 +234,10 @@ describe("FeishuBackend", () => {
   it("lists members of an explicit group and preserves pagination", async () => {
     const requestAction = vi.fn<FeishuBackendDeps["requestAction"]>(async () => ({
       ok: true,
-      members: {
-        chat_id: "oc_group",
-        has_more: true,
-        page_token: "next-page",
-        members: [{ member_id: "ou_bob", name: "Bob", member_id_type: "open_id" }],
-      },
+      chat_id: "oc_group",
+      has_more: true,
+      page_token: "next-page",
+      members: [{ member_id: "ou_bob", name: "Bob", member_id_type: "open_id" }],
     }));
     const { backend: instance } = backend(requestAction);
     const result = await instance.callTool(
@@ -263,6 +261,35 @@ describe("FeishuBackend", () => {
           openId: "ou_bob",
           target: "user:ou_bob",
           mention: { openId: "ou_bob", name: "Bob" },
+        },
+      ],
+    });
+  });
+
+  it("accepts the legacy nested member-info response shape", async () => {
+    const requestAction = vi.fn<FeishuBackendDeps["requestAction"]>(async () => ({
+      ok: true,
+      members: {
+        chat_id: "oc_group",
+        has_more: false,
+        page_token: "",
+        members: [{ member_id: "ou_legacy", name: "Legacy", member_id_type: "open_id" }],
+      },
+    }));
+    const { backend: instance } = backend(requestAction);
+    const result = await instance.callTool(
+      "feishu_directory",
+      { kind: "members", target: "chat:oc_group" },
+      { callId: "legacy-members" },
+    );
+    expect(result.structuredContent).toMatchObject({
+      count: 1,
+      hasMore: false,
+      members: [
+        {
+          openId: "ou_legacy",
+          target: "user:ou_legacy",
+          mention: { openId: "ou_legacy", name: "Legacy" },
         },
       ],
     });
