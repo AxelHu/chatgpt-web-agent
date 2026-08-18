@@ -30,10 +30,19 @@ P0 提供四个 OpenClaw 工具：
 - `skills_list(query?, limit?)`
 - `skill_read(name)`
 
+可选启用两个飞书专用工具：
+
+- `feishu_message(target, message?, mentions?, mediaPath?, asVoice?)`
+- `feishu_directory(kind, query?, target?, limit?, pageToken?)`
+
 `skills_list()` 返回当前 eligible + model-visible Skill 的紧凑名字目录；带自然语言 `query`
 时可通过独立 QMD collection 返回少量候选的名字和描述。`skill_read` 只接受 Skill 名称/key，
 canonical `SKILL.md` 路径始终由实时 OpenClaw `skills.status` 解析，不接受客户端提供文件路径。
 MCP initialize instructions 还会提示客户端：仅当任务明显可能依赖本地工具、服务、工作流或操作规范且当前上下文不足时主动发现 Skill；普通自包含任务不查询 Skill。
+
+飞书接口刻意不复用通用 `message` 工具的宽 schema。发送账号由部署配置固定，调用方不能选择
+`accountId`；目标必须显式使用 `chat:oc_...` 或 `user:ou_...`。`feishu_directory`
+用于发现群、用户与群成员，并返回可以直接用于后续调用的 target / mention 数据。
 
 默认只允许文件和补丁工具访问配置的 workspace；`exec.workdir` 也必须位于 workspace 内。OpenClaw 内部的 `host/security/ask/node/elevated` 参数不会暴露给 MCP 客户端。
 
@@ -97,6 +106,7 @@ ChatGPT Web
       → OpenClawBackend
       → SkillsBackend → OpenClaw Gateway (live status)
                       → QMD MCP (optional semantic discovery)
+      → FeishuBackend → OpenClaw Gateway (message + directory)
       → NativeBackend / other backend（后续按需）
 ```
 
@@ -155,3 +165,47 @@ Drive 是可选的数据通道，不做后台同步、磁盘挂载或整盘镜�
    ```
 
 Drive 工具中的 `folderId` / `fileId` 直接使用 Drive API ID。普通二进制文件使用 `drive_download`；Google Docs/Sheets/Slides 使用 `drive_export` 导出到指定 MIME type。
+
+## 飞书消息
+
+飞书是可选的主动外发通道，默认关闭。推荐为 Web Agent 创建独立的 OpenClaw agent + 飞书
+account，并固定使用同一个 ID，例如：
+
+```text
+OpenClaw agent:   chatgpt-web-agent
+Feishu account:   chatgpt-web-agent
+```
+
+配置好对应飞书应用后，将该 account 绑定到 agent，再启用 backend：
+
+```bash
+openclaw agents bind --agent chatgpt-web-agent --bind feishu:chatgpt-web-agent
+export CHATGPT_WEB_AGENT_FEISHU_ENABLED=true
+```
+
+`feishu_message` 不接受 `accountId` / `channel` 参数。每次调用还会先通过 OpenClaw Gateway 的
+`channels.status` 检查固定 account 是否精确存在、已配置且未禁用；检查失败时不会进入发送/目录
+action，因此不会在目标账号缺失时借用 `main` 或其他 agent 身份。
+
+发送目标必须显式指定：
+
+```text
+群：chat:oc_...
+人：user:ou_...
+```
+
+文本消息可传 `mentions=[{openId:"ou_...", name:"..."}]` 生成飞书原生 @ 提及。
+图片、文件、音频通过 `mediaPath` 发送；`asVoice=true` 可将音频作为语音消息发送。默认情况下
+本地媒体路径只能位于 `CHATGPT_WEB_AGENT_FEISHU_MEDIA_ROOT`（默认 workspace）内部，且会检查
+真实路径以阻止 `..` 与 symlink 逃逸。OpenClaw Gateway 自己的 agent-scoped media root policy
+仍会再次校验，因此如果部署者把该目录改到 OpenClaw 不允许的范围，请求仍会失败而不是扩大权限。
+
+`feishu_directory` 支持三类发现：
+
+- `kind="groups"`：群列表/名称查询，返回 `chat:oc_...` target；
+- `kind="peers"`：可见用户查询，返回 `user:ou_...` 和可直接复用的 mention；
+- `kind="members"`：指定 `chat:oc_...` 后列出群成员及 open_id，支持分页。
+
+实现复用正在运行的 OpenClaw Gateway，而不是读取飞书 `appSecret` 或自行维护 token。当前只提供
+主动外发和目录发现，不接收飞书入站消息；入站到 ChatGPT 网页会话的路由需要单独解决“绑定到哪个
+网页会话”的生命周期问题。

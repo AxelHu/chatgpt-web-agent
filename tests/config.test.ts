@@ -76,4 +76,48 @@ describe("loadBridgeConfig", () => {
       localRootOnly: true,
     });
   });
+
+  it("enables Feishu with a fixed Web Agent identity and workspace-scoped media defaults", () => {
+    const config = loadBridgeConfig(
+      { CHATGPT_WEB_AGENT_FEISHU_ENABLED: "true" },
+      "/tmp/workspace",
+    );
+    expect(config.feishu).toEqual({
+      agentId: "chatgpt-web-agent",
+      accountId: "chatgpt-web-agent",
+      gatewayUrl: "ws://127.0.0.1:18789",
+      requestTimeoutMs: 10_000,
+      mediaRoot: path.resolve("/tmp/workspace"),
+      mediaRootOnly: true,
+      defaultDirectoryLimit: 20,
+      maxDirectoryLimit: 100,
+    });
+  });
+
+  it("parses Feishu overrides without exposing sender selection to tool callers", () => {
+    const config = loadBridgeConfig(
+      {
+        CHATGPT_WEB_AGENT_FEISHU_ENABLED: "true",
+        CHATGPT_WEB_AGENT_FEISHU_AGENT_ID: "web-agent",
+        CHATGPT_WEB_AGENT_FEISHU_ACCOUNT_ID: "web-bot",
+        CHATGPT_WEB_AGENT_FEISHU_GATEWAY_URL: "ws://127.0.0.1:19999",
+        CHATGPT_WEB_AGENT_FEISHU_TIMEOUT_MS: "7000",
+        CHATGPT_WEB_AGENT_FEISHU_MEDIA_ROOT: "/tmp/feishu-media",
+        CHATGPT_WEB_AGENT_FEISHU_MEDIA_ROOT_ONLY: "false",
+        CHATGPT_WEB_AGENT_FEISHU_DIRECTORY_DEFAULT_LIMIT: "10",
+        CHATGPT_WEB_AGENT_FEISHU_DIRECTORY_MAX_LIMIT: "50",
+      },
+      "/tmp/workspace",
+    );
+    expect(config.feishu).toEqual({
+      agentId: "web-agent",
+      accountId: "web-bot",
+      gatewayUrl: "ws://127.0.0.1:19999",
+      requestTimeoutMs: 7000,
+      mediaRoot: path.resolve("/tmp/feishu-media"),
+      mediaRootOnly: false,
+      defaultDirectoryLimit: 10,
+      maxDirectoryLimit: 50,
+    });
+  });
 });
