@@ -2,6 +2,8 @@
 
 让 ChatGPT 网页端通过 OpenAI Secure MCP Tunnel 使用本机工具的本地 MCP 胶水层。
 
+这是一个可运行的参考实现，而不是追求一键安装的成品；它主要用于分享一条实际验证过的接入思路，使用者可以借助 Agent 按自己的本地环境快速适配。
+
 项目自己的 MCP 接口保持稳定，真实工具由可替换的 `LocalToolBackend` 提供。首个 backend 直接复用 OpenClaw Plugin SDK，不修改 OpenClaw 源码，也不重新实现文件、Shell、补丁和后台进程工具。
 
 ## 当前状态
