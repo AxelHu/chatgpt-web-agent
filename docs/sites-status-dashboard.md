@@ -1,5 +1,8 @@
 # Sites status dashboard
 
+> **Exploration archive:** the active implementation moved to `Agents/chatgpt-sites`.
+> This document and the adjacent implementation snapshot are retained as part of the original Sites capability investigation; future Site-specific work belongs in the standalone repository.
+
 A small push-based status path for a private ChatGPT Site.
 
 ```text
