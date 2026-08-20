@@ -8,12 +8,21 @@
 
 ## 当前状态
 
-P0 提供四个 OpenClaw 工具：
+核心工具包括四个 OpenClaw 工具：
 
 - `read`
 - `exec`
 - `process`
 - `apply_patch`
+
+以及一个由 MCP server 自己直接执行、独立于 OpenClaw Gateway/runtime 的救援工具：
+
+- `rescue_exec(command, workdir?, env?, timeout?)`
+
+`rescue_exec` 只用于普通 `exec` 不可用、卡住或怀疑 OpenClaw 执行路径异常时的短命诊断/修复。
+它同步执行，默认 15 秒超时、最长 60 秒，不支持 `background` / `yieldMs` / `pty`，也没有
+`process` session。它不是自动 fallback：普通 `exec` 失败后不得自动用 `rescue_exec` 重试同一命令，
+因为结果返回失败并不等价于原命令没有产生副作用。
 
 可选启用 Google Drive 文件交换工具：
 
@@ -44,13 +53,13 @@ MCP initialize instructions 还会提示客户端：仅当任务明显可能依�
 `accountId`；目标必须显式使用 `chat:oc_...` 或 `user:ou_...`。`feishu_directory`
 用于发现群、用户、群成员与 OpenClaw named Feishu bots，并返回可以直接用于后续调用的 target / mention 数据。
 
-默认只允许文件和补丁工具访问配置的 workspace；`exec.workdir` 也必须位于 workspace 内。OpenClaw 内部的 `host/security/ask/node/elevated` 参数不会暴露给 MCP 客户端。
+默认只允许文件和补丁工具访问配置的 workspace；`exec.workdir` / `rescue_exec.workdir` 也必须位于 workspace 内。OpenClaw 内部的 `host/security/ask/node/elevated` 参数不会暴露给 MCP 客户端。
 
 对于仅授权给可信 ChatGPT workspace 的独立 Connector，可以设置
 `CHATGPT_WEB_AGENT_WORKSPACE_ONLY=false`，此时 workspace 只是相对路径和默认 cwd 的落点，
-`read/apply_patch/exec.workdir` 可以访问外部绝对路径。该模式不是安全沙箱。
+`read/apply_patch/exec.workdir/rescue_exec.workdir` 可以访问外部绝对路径。该模式不是安全沙箱。
 
-> `exec.workdir` 边界不是命令沙箱。获得 `exec` 权限的客户端仍可能在命令文本中访问系统其他位置；只应把 Tunnel 授权给可信的 ChatGPT workspace，并按需要使用 OpenClaw 的 allowlist/approval 策略。
+> `exec.workdir` / `rescue_exec.workdir` 边界不是命令沙箱。获得 shell 执行权限的客户端仍可能在命令文本中访问系统其他位置；只应把 Tunnel 授权给可信的 ChatGPT workspace。`rescue_exec` 与 MCP server 使用同一个普通 OS 用户，不提供 sudo/root，也不会默认继承 SSH agent、proxy、OpenClaw runtime 等环境；它只继承 PATH/HOME/USER/locale/XDG/DBus 等必要环境，再叠加调用方显式传入的 `env`。
 
 ## 开发
 
@@ -79,7 +88,7 @@ node dist/cli.js
 复制 `.env.example` 查看可用环境变量。默认工具白名单为：
 
 ```text
-read,exec,process,apply_patch
+read,exec,process,apply_patch,rescue_exec
 ```
 
 `exec` 默认使用 `allowlist + on-miss`。可以显式覆盖：
@@ -104,6 +113,7 @@ ChatGPT Web
   → chatgpt-web-agent MCP Server
   → LocalToolBackend
       → OpenClawBackend
+      → RescueExecBackend → local /bin/bash (direct spawn, no OpenClaw)
       → SkillsBackend → OpenClaw Gateway (live status)
                       → QMD MCP (optional semantic discovery)
       → FeishuBackend → OpenClaw Gateway (message + directory)

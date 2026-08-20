@@ -1,6 +1,12 @@
 import path from "node:path";
 
-export const DEFAULT_TOOL_ALLOWLIST = ["read", "exec", "process", "apply_patch"] as const;
+export const DEFAULT_TOOL_ALLOWLIST = [
+  "read",
+  "exec",
+  "process",
+  "apply_patch",
+  "rescue_exec",
+] as const;
 
 export type BridgeConfig = {
   workspaceDir: string;

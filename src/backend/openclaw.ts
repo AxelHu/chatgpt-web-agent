@@ -1,4 +1,3 @@
-import path from "node:path";
 import { randomUUID } from "node:crypto";
 import {
   createOpenClawCodingTools,
@@ -8,6 +7,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { BridgeConfig } from "../config.js";
 import { normalizeToolResult, toolError } from "../result.js";
 import type { JsonSchema, LocalToolBackend, LocalToolDescriptor, ToolCallContext } from "./types.js";
+import { resolveToolWorkdir } from "./workdir.js";
 
 const INTERNAL_EXEC_FIELDS = new Set(["host", "security", "ask", "node", "elevated"]);
 
@@ -43,11 +43,6 @@ function publicSchemaFor(tool: ExecutableTool): JsonSchema {
   return schema;
 }
 
-function isInside(root: string, candidate: string): boolean {
-  const relative = path.relative(root, candidate);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-}
-
 function sanitizeExecArgs(
   args: Record<string, unknown>,
   workspaceDir: string,
@@ -58,11 +53,12 @@ function sanitizeExecArgs(
     delete sanitized[field];
   }
   const requestedWorkdir = typeof sanitized.workdir === "string" ? sanitized.workdir.trim() : "";
-  const workdir = path.resolve(workspaceDir, requestedWorkdir || ".");
-  if (workspaceOnly && !isInside(workspaceDir, workdir)) {
-    throw new Error(`exec workdir must stay inside workspace: ${workspaceDir}`);
-  }
-  sanitized.workdir = workdir;
+  sanitized.workdir = resolveToolWorkdir(
+    workspaceDir,
+    requestedWorkdir || undefined,
+    workspaceOnly,
+    "exec",
+  );
   return sanitized;
 }
 

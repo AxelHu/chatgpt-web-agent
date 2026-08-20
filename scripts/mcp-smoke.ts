@@ -25,6 +25,10 @@ try {
   const listed = await client.listTools();
   const read = await client.callTool({ name: "read", arguments: { path: "probe.txt" } });
   const exec = await client.callTool({ name: "exec", arguments: { command: "printf mcp-exec-ok" } });
+  const rescueExec = await client.callTool({
+    name: "rescue_exec",
+    arguments: { command: "printf mcp-rescue-ok" },
+  });
   const patch = await client.callTool({
     name: "apply_patch",
     arguments: {
@@ -60,6 +64,7 @@ try {
         tools: listed.tools.map((tool) => tool.name).sort(),
         read: read.content,
         exec: exec.content,
+        rescueExec: rescueExec.content,
         patch: patch.content,
         patchedText,
         process: managedProcess.content,

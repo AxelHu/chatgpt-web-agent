@@ -4,6 +4,7 @@ import { CompositeBackend } from "./backend/composite.js";
 import { FeishuBackend } from "./backend/feishu.js";
 import { GoogleDriveBackend } from "./backend/google-drive.js";
 import { OpenClawBackend } from "./backend/openclaw.js";
+import { RescueExecBackend } from "./backend/rescue-exec.js";
 import { SkillsBackend } from "./backend/skills.js";
 import type { LocalToolBackend } from "./backend/types.js";
 import { loadBridgeConfig } from "./config.js";
@@ -17,6 +18,9 @@ async function main(): Promise<void> {
   }
 
   const backends: LocalToolBackend[] = [new OpenClawBackend(config)];
+  if (config.toolAllowlist.has("rescue_exec")) {
+    backends.push(new RescueExecBackend(config));
+  }
   if (config.skills) {
     fs.mkdirSync(config.skills.catalogDir, { recursive: true });
     backends.push(new SkillsBackend(config.skills, config.maxOutputChars));

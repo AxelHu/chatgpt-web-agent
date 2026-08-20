@@ -3,9 +3,15 @@ import { describe, expect, it } from "vitest";
 import { loadBridgeConfig } from "../src/config.js";
 
 describe("loadBridgeConfig", () => {
-  it("uses the four P0 tools by default", () => {
+  it("uses the core tools plus the independent rescue path by default", () => {
     const config = loadBridgeConfig({}, "/tmp/workspace");
-    expect([...config.toolAllowlist]).toEqual(["read", "exec", "process", "apply_patch"]);
+    expect([...config.toolAllowlist]).toEqual([
+      "read",
+      "exec",
+      "process",
+      "apply_patch",
+      "rescue_exec",
+    ]);
     expect(config.workspaceDir).toBe(path.resolve("/tmp/workspace"));
     expect(config.workspaceOnly).toBe(true);
     expect(config.skills).toEqual({
