@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -8,6 +7,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import type { LocalToolBackend } from "./backend/types.js";
 import { toolError } from "./result.js";
+import { EpipeSafeStdioServerTransport } from "./stdio-server-transport.js";
 
 export type LocalMcpServer = {
   server: Server;
@@ -43,7 +43,7 @@ export function createLocalMcpServer(backend: LocalToolBackend): LocalMcpServer 
   return {
     server,
     serveStdio: async () => {
-      const transport = new StdioServerTransport();
+      const transport = new EpipeSafeStdioServerTransport();
       await server.connect(transport);
     },
     close: async () => {
