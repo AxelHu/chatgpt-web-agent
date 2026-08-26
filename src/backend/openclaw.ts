@@ -96,13 +96,21 @@ export class OpenClawBackend implements LocalToolBackend {
   readonly #config: BridgeConfig;
   readonly #tools: Map<string, ExecutableTool>;
 
-  constructor(config: BridgeConfig) {
+  constructor(
+    config: BridgeConfig,
+    options: {
+      toolAllowlist?: ReadonlySet<string>;
+      sessionKey?: string;
+      sessionId?: string;
+    } = {},
+  ) {
     this.#config = config;
     const runtimeConfig = createToolRuntimeConfig(config);
+    const toolAllowlist = options.toolAllowlist ?? config.toolAllowlist;
     const tools = createOpenClawCodingTools({
       agentId: "chatgpt-web-agent",
-      sessionKey: `agent:chatgpt-web-agent:mcp:${process.pid}`,
-      sessionId: randomUUID(),
+      sessionKey: options.sessionKey ?? `agent:chatgpt-web-agent:mcp:${process.pid}`,
+      sessionId: options.sessionId ?? randomUUID(),
       workspaceDir: config.workspaceDir,
       cwd: config.workspaceDir,
       config: runtimeConfig,
@@ -117,7 +125,7 @@ export class OpenClawBackend implements LocalToolBackend {
     });
     this.#tools = new Map(
       tools
-        .filter((tool) => config.toolAllowlist.has(tool.name))
+        .filter((tool) => toolAllowlist.has(tool.name))
         .map((tool) => [tool.name, tool as ExecutableTool]),
     );
   }

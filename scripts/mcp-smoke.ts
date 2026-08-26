@@ -3,19 +3,28 @@ import os from "node:os";
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { createExecRuntimeBackend } from "../src/backend/exec-runtime-client.js";
+import { loadBridgeConfig } from "../src/config.js";
+import { createExecRuntimeServer } from "../src/exec-runtime-server.js";
 
 const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "chatgpt-web-agent-smoke-"));
 await fs.writeFile(path.join(workspaceDir, "probe.txt"), "mcp-read-ok\n");
+const socketPath = path.join(workspaceDir, "exec-runtime.sock");
+const runtimeEnv = {
+  ...process.env,
+  CHATGPT_WEB_AGENT_WORKSPACE: workspaceDir,
+  CHATGPT_WEB_AGENT_EXEC_SECURITY: "full",
+  CHATGPT_WEB_AGENT_EXEC_ASK: "off",
+  CHATGPT_WEB_AGENT_EXEC_RUNTIME_SOCKET: socketPath,
+};
+const runtimeConfig = loadBridgeConfig(runtimeEnv, workspaceDir);
+const runtime = createExecRuntimeServer(createExecRuntimeBackend(runtimeConfig), socketPath);
+await runtime.listen();
 
 const transport = new StdioClientTransport({
   command: process.execPath,
   args: [path.resolve("dist/cli.js")],
-  env: {
-    ...process.env,
-    CHATGPT_WEB_AGENT_WORKSPACE: workspaceDir,
-    CHATGPT_WEB_AGENT_EXEC_SECURITY: "full",
-    CHATGPT_WEB_AGENT_EXEC_ASK: "off",
-  },
+  env: runtimeEnv,
   stderr: "pipe",
 });
 const client = new Client({ name: "chatgpt-web-agent-smoke", version: "0.1.0" });
@@ -75,5 +84,6 @@ try {
   );
 } finally {
   await client.close();
+  await runtime.close();
   await fs.rm(workspaceDir, { recursive: true, force: true });
 }
