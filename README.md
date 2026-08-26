@@ -78,10 +78,18 @@ export CHATGPT_WEB_AGENT_WORKSPACE=/path/to/workspace
 # 可信独立 Connector 如需把 workspace 仅作为默认工作目录：
 # export CHATGPT_WEB_AGENT_WORKSPACE_ONLY=false
 pnpm build
+# 长期运行；生产环境建议使用 ops/systemd/chatgpt-web-agent-exec-runtime.service
+node dist/exec-runtime-cli.js
+# 另一个进程/终端中启动 MCP bridge
 node dist/cli.js
 ```
 
 服务使用 MCP stdio，标准输出只承载 MCP 协议。
+
+`exec` / `process` 仍直接复用 OpenClaw Plugin SDK，但由独立的本地 exec runtime 持有进程
+registry 和 supervisor；MCP bridge 只通过 Unix socket 转发这两个工具。因此 Tunnel/MCP bridge
+重启不会丢失正在运行的 background session。exec runtime 自身重启时，v1 不承诺恢复旧 session；
+systemd 应负责自动拉起 runtime，并通过 control group 清理旧子进程，避免 orphan。
 
 ### 配置
 
@@ -112,7 +120,11 @@ ChatGPT Web
   → OpenAI Secure MCP Tunnel
   → chatgpt-web-agent MCP Server
   → LocalToolBackend
-      → OpenClawBackend
+      → OpenClawBackend → read / apply_patch
+      → ExecRuntimeClientBackend
+          → local Unix socket
+          → persistent exec runtime
+              → OpenClawBackend → exec / process
       → RescueExecBackend → local /bin/bash (direct spawn, no OpenClaw)
       → SkillsBackend → OpenClaw Gateway (live status)
                       → QMD MCP (optional semantic discovery)

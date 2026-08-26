@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import { CompositeBackend } from "./backend/composite.js";
+import { ExecRuntimeClientBackend } from "./backend/exec-runtime-client.js";
 import { FeishuBackend } from "./backend/feishu.js";
 import { GoogleDriveBackend } from "./backend/google-drive.js";
 import { OpenClawBackend } from "./backend/openclaw.js";
@@ -17,7 +18,18 @@ async function main(): Promise<void> {
     throw new Error(`workspace is not a directory: ${config.workspaceDir}`);
   }
 
-  const backends: LocalToolBackend[] = [new OpenClawBackend(config)];
+  const execRuntimeTools = new Set(
+    ["exec", "process"].filter((name) => config.toolAllowlist.has(name)),
+  );
+  const directOpenClawTools = new Set(
+    [...config.toolAllowlist].filter((name) => name !== "exec" && name !== "process"),
+  );
+  const backends: LocalToolBackend[] = [
+    new OpenClawBackend(config, { toolAllowlist: directOpenClawTools }),
+  ];
+  if (execRuntimeTools.size > 0) {
+    backends.push(new ExecRuntimeClientBackend(config, execRuntimeTools));
+  }
   if (config.toolAllowlist.has("rescue_exec")) {
     backends.push(new RescueExecBackend(config));
   }

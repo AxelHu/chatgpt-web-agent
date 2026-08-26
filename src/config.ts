@@ -1,3 +1,4 @@
+import os from "node:os";
 import path from "node:path";
 
 export const DEFAULT_TOOL_ALLOWLIST = [
@@ -13,11 +14,17 @@ export type BridgeConfig = {
   workspaceOnly: boolean;
   toolAllowlist: ReadonlySet<string>;
   maxOutputChars: number;
+  execRuntime: ExecRuntimeConfig;
   execSecurity?: "deny" | "allowlist" | "full";
   execAsk?: "off" | "on-miss" | "always";
   googleDrive?: GoogleDriveConfig;
   skills?: SkillsConfig;
   feishu?: FeishuConfig;
+};
+
+export type ExecRuntimeConfig = {
+  socketPath: string;
+  requestTimeoutMs: number;
 };
 
 export type GoogleDriveConfig = {
@@ -87,6 +94,15 @@ function readEnum<T extends string>(
     throw new Error(`${name} must be one of: ${allowed.join(", ")}`);
   }
   return value as T;
+}
+
+function defaultExecRuntimeSocket(env: NodeJS.ProcessEnv): string {
+  const xdgRuntimeDir = env.XDG_RUNTIME_DIR?.trim();
+  if (xdgRuntimeDir) {
+    return path.join(path.resolve(xdgRuntimeDir), "chatgpt-web-agent", "exec.sock");
+  }
+  const uid = typeof process.getuid === "function" ? process.getuid() : "user";
+  return path.join(os.tmpdir(), `chatgpt-web-agent-${uid}`, "exec.sock");
 }
 
 export function loadBridgeConfig(
@@ -215,6 +231,15 @@ export function loadBridgeConfig(
     ),
     toolAllowlist: new Set(requestedTools),
     maxOutputChars: readPositiveInteger(env.CHATGPT_WEB_AGENT_MAX_OUTPUT_CHARS, 100_000),
+    execRuntime: {
+      socketPath: path.resolve(
+        env.CHATGPT_WEB_AGENT_EXEC_RUNTIME_SOCKET?.trim() || defaultExecRuntimeSocket(env),
+      ),
+      requestTimeoutMs: readPositiveInteger(
+        env.CHATGPT_WEB_AGENT_EXEC_RUNTIME_TIMEOUT_MS,
+        150_000,
+      ),
+    },
     execSecurity: readEnum(
       env.CHATGPT_WEB_AGENT_EXEC_SECURITY,
       ["deny", "allowlist", "full"] as const,

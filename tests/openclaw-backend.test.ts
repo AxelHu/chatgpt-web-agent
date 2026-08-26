@@ -16,6 +16,10 @@ describe("OpenClawBackend", () => {
       workspaceOnly: true,
       toolAllowlist: new Set(["read", "exec", "process", "apply_patch"]),
       maxOutputChars: 100_000,
+      execRuntime: {
+        socketPath: path.join(workspaceDir, "exec-runtime.sock"),
+        requestTimeoutMs: 150_000,
+      },
       execSecurity: "full",
       execAsk: "off",
     };
@@ -142,6 +146,10 @@ describe("OpenClawBackend", () => {
         workspaceOnly: false,
         toolAllowlist: new Set(["read", "exec", "process", "apply_patch"]),
         maxOutputChars: 100_000,
+        execRuntime: {
+          socketPath: path.join(workspaceDir, "exec-runtime.sock"),
+          requestTimeoutMs: 150_000,
+        },
         execSecurity: "full",
         execAsk: "off",
       });

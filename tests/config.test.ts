@@ -14,6 +14,8 @@ describe("loadBridgeConfig", () => {
     ]);
     expect(config.workspaceDir).toBe(path.resolve("/tmp/workspace"));
     expect(config.workspaceOnly).toBe(true);
+    expect(config.execRuntime.requestTimeoutMs).toBe(150_000);
+    expect(config.execRuntime.socketPath).toMatch(/chatgpt-web-agent.*exec\.sock$/);
     expect(config.skills).toEqual({
       agentId: "chatgpt-web-agent",
       gatewayUrl: "ws://127.0.0.1:18789",
@@ -60,6 +62,8 @@ describe("loadBridgeConfig", () => {
         CHATGPT_WEB_AGENT_TOOLS: "read, exec",
         CHATGPT_WEB_AGENT_EXEC_SECURITY: "full",
         CHATGPT_WEB_AGENT_EXEC_ASK: "off",
+        CHATGPT_WEB_AGENT_EXEC_RUNTIME_SOCKET: "/tmp/custom-web-agent-exec.sock",
+        CHATGPT_WEB_AGENT_EXEC_RUNTIME_TIMEOUT_MS: "123000",
         CHATGPT_WEB_AGENT_WORKSPACE_ONLY: "false",
       },
       "/tmp/workspace",
@@ -67,6 +71,10 @@ describe("loadBridgeConfig", () => {
     expect([...config.toolAllowlist]).toEqual(["read", "exec"]);
     expect(config.execSecurity).toBe("full");
     expect(config.execAsk).toBe("off");
+    expect(config.execRuntime).toEqual({
+      socketPath: path.resolve("/tmp/custom-web-agent-exec.sock"),
+      requestTimeoutMs: 123_000,
+    });
     expect(config.workspaceOnly).toBe(false);
   });
 
