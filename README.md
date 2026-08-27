@@ -113,6 +113,12 @@ export CHATGPT_WEB_AGENT_EXEC_SECURITY=full
 export CHATGPT_WEB_AGENT_EXEC_ASK=off
 ```
 
+## 推荐工作流：监工会话 + 工作会话
+
+对于需要持续推进的数学研究、工程开发等长任务，推荐把普通工作会话与一个轻量的独立监工会话分开：工作会话保留项目上下文并实际干活，监工会话通过统一 Scheduled Task 定期读取真实状态，只对 idle 的正常任务发送极短继续提示，并把疑似会话触顶、项目/重大阶段完成、需要用户决策或持续工具故障等高信号情况通过飞书升级给用户。
+
+详见 [`docs/supervised-chat-workflow.md`](docs/supervised-chat-workflow.md)。
+
 ## 架构
 
 ```text
