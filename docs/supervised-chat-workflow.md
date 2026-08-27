@@ -41,16 +41,29 @@ Every scheduled run should act from fresh reality:
 1. Verify the actually available tools needed for the current action. `ChatgptDesktop` is required for ordinary read/nudge supervision. `WebAgentTools` is only required when local diagnosis/recovery or Feishu escalation is needed.
 2. Read each worker's current live/fresh state. Never decide from supervisor memory alone.
 3. If the worker is `active`, skip it completely.
-4. Before sending anything to an idle worker, inspect the fresh current/latest node. If it is a user message with no assistant response after it, treat it as an **unresolved user turn**. Do not append another user turn; optionally fresh-read once more to avoid a start-of-generation race, then skip the worker for this pass if the unresolved turn is unchanged.
+4. Before sending anything to an idle worker, inspect the fresh current/latest node. A visible-text `chatgpt_read` is not sufficient to prove that a user turn is unresolved: Desktop may have persisted assistant reasoning/tool/code nodes that are hidden from that view, including `local.handoff`. If the visible view appears to stop on a user message, confirm the current branch with `chatgpt_get(include_tools=true)`. Only call it an **unresolved user turn** when the full persisted branch also has no assistant/tool/reasoning/code node after that user message. Do not append another user turn in that state; optionally re-read once to avoid a start-of-generation race, then skip it for this pass.
 5. If the worker is idle, its latest turn is complete, and ordinary ongoing work is still appropriate, send only its short normal nudge using the worker's explicit model/reasoning configuration.
 6. Send nudges to multiple workers **serially**, not concurrently. After each send, fresh-read/wait until an assistant turn appears or the worker is genuinely active before touching the next worker.
-7. Treat `chatgpt_send` returning `committed` only as proof that the user message was persisted. It is not proof that generation actually started. A committed message followed by an unchanged idle user current-node is an unresolved user turn; do not "recover" it by sending the same nudge again.
+7. Treat `chatgpt_send` returning `committed` only as proof that the user message was persisted. It is not proof of a visible assistant reply. If the visible view still appears to stop at the user node, inspect the full branch before retrying: a subsequent `local.handoff`, tool call, reasoning node, or code node proves that generation did run even when ordinary visible text is absent. Do not "recover" such a turn by sending the same nudge again.
 8. If the previous worker turn merely timed out or had a transient tool hiccup but there is already an assistant node and the conversation is readable/continuable, do not reconstruct or replay the failed complex turn. A later fresh short nudge is enough.
 9. Never blindly retry an ambiguous or failed `chatgpt_send`. Immediately inspect the worker again in the same supervisor pass and classify what actually happened.
 10. If the send failure is clearly a recoverable transport/timeout issue and no unresolved user turn was left behind, stop for this pass. The next normal pass starts again from fresh state.
 11. If the worker state suggests a hard conversation limit, inability to continue, persistent unresolved user turn across multiple passes, systemic tool failure, or another condition needing attention, escalate.
 
 This design deliberately treats **read-after-suspicious-write** as safer than retry-after-suspicious-write.
+
+### Desktop Work-handoff handling
+
+ChatGPT Desktop can expose a model-visible `handoff` tool for work that looks better suited to Work/Codex, especially local coding, repository edits, command execution, and file inspection. A resulting assistant node may have recipient `local.handoff` / `functions.handoff`; this is the persisted form of the Desktop “Continue with Work?” suggestion, not evidence that the user prompt was ignored or that `chatgpt_send` failed. Public Desktop reports have independently observed the same “Continue with Work?” / “Keep chatting here” interaction.
+
+The ordinary-Chat bridge now intentionally mirrors the “Keep chatting here” semantics for bridge-driven ordinary Chat:
+
+- ordinary `chatgpt_create` / `chatgpt_send` add a developer-level instruction to remain in the current Chat unless the user explicitly asks to change execution environments;
+- if `chatgpt_send` finds that its fresh current parent is a pending `local.handoff` / `functions.handoff` node, it supplies that node id as Desktop's native `rejectedHandoffCallId` before continuing;
+- this policy is scoped to bridge-driven ordinary Chat and does not disable Work globally;
+- supervisors should therefore keep normal nudges short and rely on the bridge policy rather than repeatedly embedding anti-handoff prose in user-visible prompts.
+
+A 2026-08-27 live acceptance deliberately created a pending Desktop `local.handoff`; the patched bridge then rejected that exact call id, remained `conversation_origin=null`, and a later local Git read-only request executed through the ordinary Chat's WebAgentTools path instead of producing another handoff.
 
 ### WebAgentTools self-recovery
 
