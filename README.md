@@ -188,6 +188,14 @@ Drive 是可选的数据通道，不做后台同步、磁盘挂载或整盘镜�
 
 Drive 工具中的 `folderId` / `fileId` 直接使用 Drive API ID。普通二进制文件使用 `drive_download`；Google Docs/Sheets/Slides 使用 `drive_export` 导出到指定 MIME type。
 
+### 大文件与视觉产物交接
+
+`read` 适合小文本、小图片和本地快速检查；需要跨会话交接的大型视觉/二进制产物默认走 Google Drive。多 MB 图片、视频、压缩包等应直接视为 Drive-first；约 1 MiB 以上可以作为偏保守的运维切换参考，但这不是协议硬限制。
+
+如果较大的图片/文件通过 `read` 已出现 connector 502、timeout 或类似传输错误，不应反复重试同一个 inline payload。保留原始产物不变，在需要上传时将其复制到 Drive staging root（默认 `<workspace>/exchange`），记录原始本地路径以及必要的 checksum/provenance，然后使用 `drive_upload` 放到明确的 task/exchange folder。接收会话通过 `drive_search` / `drive_list` 定位，`drive_stat` 验证元数据，再用 `drive_download`（或 Google-native 文件的 `drive_export`）恢复原件。
+
+可以额外制作较小的 JPEG/PNG preview 用于快速视觉检查，但 preview 不替代原件。base64 不作为常规跨会话大文件协议：它会放大传输体积，也让文件 provenance 比普通 Drive 文件交接更难维护。
+
 ## 飞书消息
 
 飞书是可选的主动外发通道，默认关闭。推荐为 Web Agent 创建独立的 OpenClaw agent + 飞书
