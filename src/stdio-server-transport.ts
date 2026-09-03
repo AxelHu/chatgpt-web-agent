@@ -3,6 +3,7 @@ import type { Readable, Writable } from "node:stream";
 import { ReadBuffer, serializeMessage } from "@modelcontextprotocol/sdk/shared/stdio.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
+import type { RequestLedgerEvent } from "./request-ledger.js";
 
 /**
  * Temporary v1 SDK backport for stdout failures such as EPIPE.
@@ -21,6 +22,7 @@ export class EpipeSafeStdioServerTransport implements Transport {
   constructor(
     private readonly stdin: Readable = process.stdin,
     private readonly stdout: Writable = process.stdout,
+    private readonly observe?: (event: RequestLedgerEvent) => void,
   ) {}
 
   onclose?: () => void;
@@ -60,6 +62,21 @@ export class EpipeSafeStdioServerTransport implements Transport {
         if (message === null) {
           break;
         }
+        const candidate = message as unknown as Record<string, unknown>;
+        this.observe?.({
+          phase: "mcp_transport_received",
+          mcpRequestId:
+            candidate.id === undefined || candidate.id === null ? undefined : String(candidate.id),
+          metadata: {
+            method: typeof candidate.method === "string" ? candidate.method : undefined,
+            kind:
+              "method" in candidate
+                ? candidate.id === undefined
+                  ? "notification"
+                  : "request"
+                : "response",
+          },
+        });
         this.onmessage?.(message);
       } catch (error) {
         this.onerror?.(error instanceof Error ? error : new Error(String(error)));
@@ -89,6 +106,9 @@ export class EpipeSafeStdioServerTransport implements Transport {
       return Promise.reject(new Error("EpipeSafeStdioServerTransport is closed"));
     }
 
+    const candidate = message as unknown as Record<string, unknown>;
+    const mcpRequestId =
+      candidate.id === undefined || candidate.id === null ? undefined : String(candidate.id);
     return new Promise((resolve, reject) => {
       const json = serializeMessage(message);
       let settled = false;
@@ -101,12 +121,19 @@ export class EpipeSafeStdioServerTransport implements Transport {
         if (settled) return;
         settled = true;
         cleanup();
+        this.observe?.({
+          phase: "mcp_transport_send_failed",
+          mcpRequestId,
+          ok: false,
+          errorKind: error.name || "Error",
+        });
         reject(error);
       };
       const onDrain = () => {
         if (settled) return;
         settled = true;
         cleanup();
+        this.observe?.({ phase: "mcp_transport_sent", mcpRequestId, ok: true });
         resolve();
       };
 
@@ -116,6 +143,7 @@ export class EpipeSafeStdioServerTransport implements Transport {
         if (settled) return;
         settled = true;
         cleanup();
+        this.observe?.({ phase: "mcp_transport_sent", mcpRequestId, ok: true });
         resolve();
       } else if (!settled) {
         this.stdout.once("drain", onDrain);

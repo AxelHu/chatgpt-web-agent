@@ -10,9 +10,11 @@ import { SkillsBackend } from "./backend/skills.js";
 import type { LocalToolBackend } from "./backend/types.js";
 import { loadBridgeConfig } from "./config.js";
 import { createLocalMcpServer } from "./server.js";
+import { RequestLedger } from "./request-ledger.js";
 
 async function main(): Promise<void> {
   const config = loadBridgeConfig();
+  const ledger = new RequestLedger(config.requestLedger, "mcp-wrapper");
   const workspace = fs.statSync(config.workspaceDir);
   if (!workspace.isDirectory()) {
     throw new Error(`workspace is not a directory: ${config.workspaceDir}`);
@@ -28,7 +30,7 @@ async function main(): Promise<void> {
     new OpenClawBackend(config, { toolAllowlist: directOpenClawTools }),
   ];
   if (execRuntimeTools.size > 0) {
-    backends.push(new ExecRuntimeClientBackend(config, execRuntimeTools));
+    backends.push(new ExecRuntimeClientBackend(config, execRuntimeTools, ledger));
   }
   if (config.toolAllowlist.has("rescue_exec")) {
     backends.push(new RescueExecBackend(config));
@@ -45,7 +47,7 @@ async function main(): Promise<void> {
     backends.push(new FeishuBackend(config.feishu));
   }
   const backend = new CompositeBackend(backends);
-  const localServer = createLocalMcpServer(backend);
+  const localServer = createLocalMcpServer(backend, ledger);
   let closing = false;
   const close = async () => {
     if (closing) {

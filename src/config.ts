@@ -14,12 +14,20 @@ export type BridgeConfig = {
   workspaceOnly: boolean;
   toolAllowlist: ReadonlySet<string>;
   maxOutputChars: number;
+  requestLedger: RequestLedgerConfig;
   execRuntime: ExecRuntimeConfig;
   execSecurity?: "deny" | "allowlist" | "full";
   execAsk?: "off" | "on-miss" | "always";
   googleDrive?: GoogleDriveConfig;
   skills?: SkillsConfig;
   feishu?: FeishuConfig;
+};
+
+export type RequestLedgerConfig = {
+  enabled: boolean;
+  directory: string;
+  retentionDays: number;
+  maxBytes: number;
 };
 
 export type ExecRuntimeConfig = {
@@ -103,6 +111,13 @@ function defaultExecRuntimeSocket(env: NodeJS.ProcessEnv): string {
   }
   const uid = typeof process.getuid === "function" ? process.getuid() : "user";
   return path.join(os.tmpdir(), `chatgpt-web-agent-${uid}`, "exec.sock");
+}
+
+function defaultRequestLedgerDir(env: NodeJS.ProcessEnv): string {
+  const stateHome = env.XDG_STATE_HOME?.trim()
+    ? path.resolve(env.XDG_STATE_HOME.trim())
+    : path.join(os.homedir(), ".local", "state");
+  return path.join(stateHome, "chatgpt-web-agent", "request-ledger");
 }
 
 export function loadBridgeConfig(
@@ -231,6 +246,24 @@ export function loadBridgeConfig(
     ),
     toolAllowlist: new Set(requestedTools),
     maxOutputChars: readPositiveInteger(env.CHATGPT_WEB_AGENT_MAX_OUTPUT_CHARS, 100_000),
+    requestLedger: {
+      enabled: readBoolean(
+        env.CHATGPT_WEB_AGENT_REQUEST_LEDGER_ENABLED,
+        true,
+        "CHATGPT_WEB_AGENT_REQUEST_LEDGER_ENABLED",
+      ),
+      directory: path.resolve(
+        env.CHATGPT_WEB_AGENT_REQUEST_LEDGER_DIR?.trim() || defaultRequestLedgerDir(env),
+      ),
+      retentionDays: readPositiveInteger(
+        env.CHATGPT_WEB_AGENT_REQUEST_LEDGER_RETENTION_DAYS,
+        7,
+      ),
+      maxBytes: readPositiveInteger(
+        env.CHATGPT_WEB_AGENT_REQUEST_LEDGER_MAX_BYTES,
+        64 * 1024 * 1024,
+      ),
+    },
     execRuntime: {
       socketPath: path.resolve(
         env.CHATGPT_WEB_AGENT_EXEC_RUNTIME_SOCKET?.trim() || defaultExecRuntimeSocket(env),

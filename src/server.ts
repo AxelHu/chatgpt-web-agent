@@ -6,6 +6,7 @@ import {
   type CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { LocalToolBackend } from "./backend/types.js";
+import { RequestLedger, summarizeToolArgs, summarizeToolResult } from "./request-ledger.js";
 import { toolError } from "./result.js";
 import { EpipeSafeStdioServerTransport } from "./stdio-server-transport.js";
 
@@ -15,7 +16,10 @@ export type LocalMcpServer = {
   close(): Promise<void>;
 };
 
-export function createLocalMcpServer(backend: LocalToolBackend): LocalMcpServer {
+export function createLocalMcpServer(
+  backend: LocalToolBackend,
+  ledger?: RequestLedger,
+): LocalMcpServer {
   const server = new Server(
     { name: "chatgpt-web-agent", version: "0.1.0" },
     {
@@ -29,21 +33,65 @@ export function createLocalMcpServer(backend: LocalToolBackend): LocalMcpServer 
     tools: await backend.listTools(),
   }));
 
-  server.setRequestHandler(CallToolRequestSchema, async (request): Promise<CallToolResult> => {
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra): Promise<CallToolResult> => {
     const name = request.params.name;
     const args = request.params.arguments;
+    const callId = `mcp-${randomUUID()}`;
+    const mcpRequestId = String(extra.requestId);
+    const startedAt = performance.now();
     if (args !== undefined && (typeof args !== "object" || args === null || Array.isArray(args))) {
+      ledger?.record({
+        phase: "mcp_call_rejected",
+        callId,
+        mcpRequestId,
+        tool: name,
+        ok: false,
+        errorKind: "InvalidArguments",
+      });
       return toolError("Tool arguments must be an object");
     }
-    return backend.callTool(name, (args ?? {}) as Record<string, unknown>, {
-      callId: `mcp-${randomUUID()}`,
+    const normalizedArgs = (args ?? {}) as Record<string, unknown>;
+    ledger?.record({
+      phase: "mcp_call_received",
+      callId,
+      mcpRequestId,
+      tool: name,
+      metadata: summarizeToolArgs(name, normalizedArgs),
     });
+    try {
+      const result = await backend.callTool(name, normalizedArgs, { callId });
+      ledger?.record({
+        phase: "mcp_call_completed",
+        callId,
+        mcpRequestId,
+        tool: name,
+        ok: result.isError !== true,
+        durationMs: Math.round(performance.now() - startedAt),
+        metadata: summarizeToolResult(result),
+      });
+      return result;
+    } catch (error) {
+      ledger?.record({
+        phase: "mcp_call_failed",
+        callId,
+        mcpRequestId,
+        tool: name,
+        ok: false,
+        durationMs: Math.round(performance.now() - startedAt),
+        errorKind: error instanceof Error ? error.name : typeof error,
+      });
+      throw error;
+    }
   });
 
   return {
     server,
     serveStdio: async () => {
-      const transport = new EpipeSafeStdioServerTransport();
+      const transport = new EpipeSafeStdioServerTransport(
+        undefined,
+        undefined,
+        (event) => ledger?.record(event),
+      );
       await server.connect(transport);
     },
     close: async () => {

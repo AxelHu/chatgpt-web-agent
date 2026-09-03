@@ -91,6 +91,19 @@ registry 和 supervisor；MCP bridge 只通过 Unix socket 转发这两个工具
 重启不会丢失正在运行的 background session。exec runtime 自身重启时，v1 不承诺恢复旧 session；
 systemd 应负责自动拉起 runtime，并通过 control group 清理旧子进程，避免 orphan。
 
+### 诊断日志
+
+Web Agent 默认写一份轻量 request ledger 到
+`~/.local/state/chatgpt-web-agent/request-ledger/YYYY-MM-DD.jsonl`。它只记录请求阶段、MCP
+JSON-RPC id、本地 call id、tool/action/sessionId、等待时间、耗时、结果大小和错误类型等元数据；
+不会复制 `exec.command`、工具输出正文、文件内容或消息正文。默认保留 7 天，且总量上限为
+64 MiB。可用 `CHATGPT_WEB_AGENT_REQUEST_LEDGER_*` 环境变量调整或关闭。
+
+独立 WebAgent Rescue 服务同时原样镜像目标 Tunnel 的 journal，默认按天保留 7 天并设置
+192 MiB 总量上限。两层合计的持续诊断日志预算约为 256 MiB；事故 snapshot 独立保存，不受
+日常日志轮转影响。排障时可用时间戳 + MCP request id 将 Tunnel journal 与 request ledger 对齐，
+判断一次调用停在 Tunnel→MCP、wrapper→exec-runtime、OpenClaw 执行还是 response 写回阶段。
+
 ### 配置
 
 复制 `.env.example` 查看可用环境变量。默认工具白名单为：

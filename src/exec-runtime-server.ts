@@ -3,6 +3,7 @@ import net from "node:net";
 import path from "node:path";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { LocalToolBackend } from "./backend/types.js";
+import { RequestLedger, summarizeToolArgs, summarizeToolResult } from "./request-ledger.js";
 import {
   EXEC_RUNTIME_PROTOCOL_VERSION,
   parseExecRuntimeRequest,
@@ -41,6 +42,7 @@ export type ExecRuntimeServer = {
 export function createExecRuntimeServer(
   backend: LocalToolBackend,
   socketPath: string,
+  ledger?: RequestLedger,
 ): ExecRuntimeServer {
   const memo = new Map<string, MemoEntry>();
   let listening = false;
@@ -64,6 +66,12 @@ export function createExecRuntimeServer(
     const fingerprint = fingerprintRequest(request);
     const existing = memo.get(request.requestId);
     if (existing) {
+      ledger?.record({
+        phase: "exec_runtime_request_reused",
+        callId: request.callId,
+        tool: request.tool,
+        backend: "exec-runtime",
+      });
       if (existing.fingerprint !== fingerprint) {
         return Promise.resolve({
           version: EXEC_RUNTIME_PROTOCOL_VERSION,
@@ -75,21 +83,51 @@ export function createExecRuntimeServer(
       return existing.promise;
     }
 
+    ledger?.record({
+      phase: "openclaw_call_started",
+      callId: request.callId,
+      tool: request.tool,
+      backend: "openclaw",
+      metadata: summarizeToolArgs(request.tool, request.args),
+    });
+    const startedAt = performance.now();
     const promise = backend
       .callTool(request.tool, request.args, { callId: request.callId })
       .then(
-        (result): ExecRuntimeResponse => ({
-          version: EXEC_RUNTIME_PROTOCOL_VERSION,
-          requestId: request.requestId,
-          ok: true,
-          result,
-        }),
-        (error): ExecRuntimeResponse => ({
-          version: EXEC_RUNTIME_PROTOCOL_VERSION,
-          requestId: request.requestId,
-          ok: false,
-          error: errorMessage(error),
-        }),
+        (result): ExecRuntimeResponse => {
+          ledger?.record({
+            phase: "openclaw_call_completed",
+            callId: request.callId,
+            tool: request.tool,
+            backend: "openclaw",
+            ok: result.isError !== true,
+            durationMs: Math.round(performance.now() - startedAt),
+            metadata: summarizeToolResult(result),
+          });
+          return {
+            version: EXEC_RUNTIME_PROTOCOL_VERSION,
+            requestId: request.requestId,
+            ok: true,
+            result,
+          };
+        },
+        (error): ExecRuntimeResponse => {
+          ledger?.record({
+            phase: "openclaw_call_failed",
+            callId: request.callId,
+            tool: request.tool,
+            backend: "openclaw",
+            ok: false,
+            durationMs: Math.round(performance.now() - startedAt),
+            errorKind: error instanceof Error ? error.name : typeof error,
+          });
+          return {
+            version: EXEC_RUNTIME_PROTOCOL_VERSION,
+            requestId: request.requestId,
+            ok: false,
+            error: errorMessage(error),
+          };
+        },
       )
       .finally(() => {
         const entry = memo.get(request.requestId);
@@ -144,8 +182,32 @@ export function createExecRuntimeServer(
         fail(requestId, errorMessage(error));
         return;
       }
+      ledger?.record({
+        phase: "exec_runtime_request_received",
+        callId: request.callId,
+        tool: request.tool,
+        backend: "exec-runtime",
+        metadata: summarizeToolArgs(request.tool, request.args),
+      });
       void executeOnce(request).then((response) => {
-        if (!socket.destroyed) socket.end(`${JSON.stringify(response)}\n`);
+        if (!socket.destroyed) {
+          ledger?.record({
+            phase: "exec_runtime_response_emitted",
+            callId: request.callId,
+            tool: request.tool,
+            backend: "exec-runtime",
+            ok: response.ok,
+          });
+          socket.end(`${JSON.stringify(response)}\n`);
+        } else {
+          ledger?.record({
+            phase: "exec_runtime_response_dropped",
+            callId: request.callId,
+            tool: request.tool,
+            backend: "exec-runtime",
+            ok: false,
+          });
+        }
       });
     });
   });

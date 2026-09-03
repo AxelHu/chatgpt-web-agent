@@ -3,16 +3,18 @@ import fs from "node:fs";
 import { createExecRuntimeBackend } from "./backend/exec-runtime-client.js";
 import { loadBridgeConfig } from "./config.js";
 import { createExecRuntimeServer } from "./exec-runtime-server.js";
+import { RequestLedger } from "./request-ledger.js";
 
 async function main(): Promise<void> {
   const config = loadBridgeConfig();
+  const ledger = new RequestLedger(config.requestLedger, "exec-runtime");
   const workspace = fs.statSync(config.workspaceDir);
   if (!workspace.isDirectory()) {
     throw new Error(`workspace is not a directory: ${config.workspaceDir}`);
   }
 
   const backend = createExecRuntimeBackend(config);
-  const runtime = createExecRuntimeServer(backend, config.execRuntime.socketPath);
+  const runtime = createExecRuntimeServer(backend, config.execRuntime.socketPath, ledger);
   let closing = false;
   const close = async () => {
     if (closing) return;

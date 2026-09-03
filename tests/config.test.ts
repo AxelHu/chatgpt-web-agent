@@ -16,6 +16,10 @@ describe("loadBridgeConfig", () => {
     expect(config.workspaceOnly).toBe(true);
     expect(config.execRuntime.requestTimeoutMs).toBe(150_000);
     expect(config.execRuntime.socketPath).toMatch(/chatgpt-web-agent.*exec\.sock$/);
+    expect(config.requestLedger.enabled).toBe(true);
+    expect(config.requestLedger.retentionDays).toBe(7);
+    expect(config.requestLedger.maxBytes).toBe(64 * 1024 * 1024);
+    expect(config.requestLedger.directory).toMatch(/chatgpt-web-agent\/request-ledger$/);
     expect(config.skills).toEqual({
       agentId: "chatgpt-web-agent",
       gatewayUrl: "ws://127.0.0.1:18789",
@@ -65,6 +69,10 @@ describe("loadBridgeConfig", () => {
         CHATGPT_WEB_AGENT_EXEC_RUNTIME_SOCKET: "/tmp/custom-web-agent-exec.sock",
         CHATGPT_WEB_AGENT_EXEC_RUNTIME_TIMEOUT_MS: "123000",
         CHATGPT_WEB_AGENT_WORKSPACE_ONLY: "false",
+        CHATGPT_WEB_AGENT_REQUEST_LEDGER_ENABLED: "false",
+        CHATGPT_WEB_AGENT_REQUEST_LEDGER_DIR: "/tmp/ledger",
+        CHATGPT_WEB_AGENT_REQUEST_LEDGER_RETENTION_DAYS: "3",
+        CHATGPT_WEB_AGENT_REQUEST_LEDGER_MAX_BYTES: "4096",
       },
       "/tmp/workspace",
     );
@@ -76,6 +84,12 @@ describe("loadBridgeConfig", () => {
       requestTimeoutMs: 123_000,
     });
     expect(config.workspaceOnly).toBe(false);
+    expect(config.requestLedger).toEqual({
+      enabled: false,
+      directory: path.resolve("/tmp/ledger"),
+      retentionDays: 3,
+      maxBytes: 4096,
+    });
   });
 
   it("enables Google Drive with workspace-local credential and staging defaults", () => {
