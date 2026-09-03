@@ -20,6 +20,10 @@ describe("loadBridgeConfig", () => {
     expect(config.requestLedger.retentionDays).toBe(7);
     expect(config.requestLedger.maxBytes).toBe(64 * 1024 * 1024);
     expect(config.requestLedger.directory).toMatch(/chatgpt-web-agent\/request-ledger$/);
+    expect(config.fullTrace.enabled).toBe(true);
+    expect(config.fullTrace.retentionDays).toBe(7);
+    expect(config.fullTrace.maxBytes).toBe(2 * 1024 * 1024 * 1024);
+    expect(config.fullTrace.directory).toMatch(/chatgpt-web-agent\/full-trace$/);
     expect(config.skills).toEqual({
       agentId: "chatgpt-web-agent",
       gatewayUrl: "ws://127.0.0.1:18789",
@@ -73,6 +77,10 @@ describe("loadBridgeConfig", () => {
         CHATGPT_WEB_AGENT_REQUEST_LEDGER_DIR: "/tmp/ledger",
         CHATGPT_WEB_AGENT_REQUEST_LEDGER_RETENTION_DAYS: "3",
         CHATGPT_WEB_AGENT_REQUEST_LEDGER_MAX_BYTES: "4096",
+        CHATGPT_WEB_AGENT_FULL_TRACE_ENABLED: "false",
+        CHATGPT_WEB_AGENT_FULL_TRACE_DIR: "/tmp/full-trace",
+        CHATGPT_WEB_AGENT_FULL_TRACE_RETENTION_DAYS: "5",
+        CHATGPT_WEB_AGENT_FULL_TRACE_MAX_BYTES: "8192",
       },
       "/tmp/workspace",
     );
@@ -89,6 +97,12 @@ describe("loadBridgeConfig", () => {
       directory: path.resolve("/tmp/ledger"),
       retentionDays: 3,
       maxBytes: 4096,
+    });
+    expect(config.fullTrace).toEqual({
+      enabled: false,
+      directory: path.resolve("/tmp/full-trace"),
+      retentionDays: 5,
+      maxBytes: 8192,
     });
   });
 

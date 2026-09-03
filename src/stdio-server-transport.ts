@@ -3,6 +3,7 @@ import type { Readable, Writable } from "node:stream";
 import { ReadBuffer, serializeMessage } from "@modelcontextprotocol/sdk/shared/stdio.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
+import type { FullTraceEvent } from "./full-trace.js";
 import type { RequestLedgerEvent } from "./request-ledger.js";
 
 /**
@@ -23,6 +24,7 @@ export class EpipeSafeStdioServerTransport implements Transport {
     private readonly stdin: Readable = process.stdin,
     private readonly stdout: Writable = process.stdout,
     private readonly observe?: (event: RequestLedgerEvent) => void,
+    private readonly trace?: (event: FullTraceEvent) => void,
   ) {}
 
   onclose?: () => void;
@@ -35,10 +37,12 @@ export class EpipeSafeStdioServerTransport implements Transport {
   };
 
   private readonly onInputError = (error: Error) => {
+    this.trace?.({ phase: "mcp_transport_input_error", ok: false, error });
     this.onerror?.(error);
   };
 
   private readonly onOutputError = (error: Error) => {
+    this.trace?.({ phase: "mcp_transport_output_error", ok: false, error });
     this.onerror?.(error);
     void this.close().catch(() => {
       // The transport is already in an error path; close is best effort here.
@@ -77,9 +81,17 @@ export class EpipeSafeStdioServerTransport implements Transport {
                 : "response",
           },
         });
+        this.trace?.({
+          phase: "mcp_transport_received",
+          mcpRequestId:
+            candidate.id === undefined || candidate.id === null ? undefined : String(candidate.id),
+          payload: message,
+        });
         this.onmessage?.(message);
       } catch (error) {
-        this.onerror?.(error instanceof Error ? error : new Error(String(error)));
+        const normalized = error instanceof Error ? error : new Error(String(error));
+        this.trace?.({ phase: "mcp_transport_parse_error", ok: false, error: normalized });
+        this.onerror?.(normalized);
       }
     }
   }
@@ -127,6 +139,13 @@ export class EpipeSafeStdioServerTransport implements Transport {
           ok: false,
           errorKind: error.name || "Error",
         });
+        this.trace?.({
+          phase: "mcp_transport_send_failed",
+          mcpRequestId,
+          ok: false,
+          payload: message,
+          error,
+        });
         reject(error);
       };
       const onDrain = () => {
@@ -134,6 +153,7 @@ export class EpipeSafeStdioServerTransport implements Transport {
         settled = true;
         cleanup();
         this.observe?.({ phase: "mcp_transport_sent", mcpRequestId, ok: true });
+        this.trace?.({ phase: "mcp_transport_sent", mcpRequestId, ok: true, payload: message });
         resolve();
       };
 
@@ -144,6 +164,7 @@ export class EpipeSafeStdioServerTransport implements Transport {
         settled = true;
         cleanup();
         this.observe?.({ phase: "mcp_transport_sent", mcpRequestId, ok: true });
+        this.trace?.({ phase: "mcp_transport_sent", mcpRequestId, ok: true, payload: message });
         resolve();
       } else if (!settled) {
         this.stdout.once("drain", onDrain);

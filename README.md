@@ -91,6 +91,15 @@ registry 和 supervisor；MCP bridge 只通过 Unix socket 转发这两个工具
 重启不会丢失正在运行的 background session。exec runtime 自身重启时，v1 不承诺恢复旧 session；
 systemd 应负责自动拉起 runtime，并通过 control group 清理旧子进程，避免 orphan。
 
+### 本地诊断日志
+
+默认同时保留两层 7 日诊断数据：
+
+- `~/.local/state/chatgpt-web-agent/request-ledger/YYYY-MM-DD.jsonl`：64 MiB 上限的紧凑调用索引，适合按 `callId` / `sessionId` / phase 快速 grep。
+- `~/.local/state/chatgpt-web-agent/full-trace/YYYY-MM-DD.jsonl`：完整 MCP/tool request、response、error 与跨 exec-runtime 阶段事件；历史日期自动 zstd 压缩为 `.jsonl.zst`，默认总上限 2 GiB。
+
+full trace 以排障完整性为优先：普通 command、patch、文本输出、文件内容、Drive/Skills/Feishu 参数与响应都会保留。只对 `Authorization` / Cookie / token / password / API key / private key 等明确凭据做窄范围遮蔽，并把 image/base64/二进制大块替换为长度与 SHA-256，避免无诊断价值的日志膨胀。所有日志目录/文件分别使用 `0700` / `0600` 权限，过期清理由写入进程自动完成。
+
 ### 诊断日志
 
 Web Agent 默认写一份轻量 request ledger 到

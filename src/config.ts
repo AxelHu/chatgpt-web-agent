@@ -15,6 +15,7 @@ export type BridgeConfig = {
   toolAllowlist: ReadonlySet<string>;
   maxOutputChars: number;
   requestLedger: RequestLedgerConfig;
+  fullTrace: FullTraceConfig;
   execRuntime: ExecRuntimeConfig;
   execSecurity?: "deny" | "allowlist" | "full";
   execAsk?: "off" | "on-miss" | "always";
@@ -24,6 +25,13 @@ export type BridgeConfig = {
 };
 
 export type RequestLedgerConfig = {
+  enabled: boolean;
+  directory: string;
+  retentionDays: number;
+  maxBytes: number;
+};
+
+export type FullTraceConfig = {
   enabled: boolean;
   directory: string;
   retentionDays: number;
@@ -111,6 +119,15 @@ function defaultExecRuntimeSocket(env: NodeJS.ProcessEnv): string {
   }
   const uid = typeof process.getuid === "function" ? process.getuid() : "user";
   return path.join(os.tmpdir(), `chatgpt-web-agent-${uid}`, "exec.sock");
+}
+
+function defaultStateRoot(env: NodeJS.ProcessEnv): string {
+  const xdgStateHome = env.XDG_STATE_HOME?.trim();
+  return xdgStateHome ? path.resolve(xdgStateHome) : path.join(os.homedir(), ".local", "state");
+}
+
+function defaultFullTraceDir(env: NodeJS.ProcessEnv): string {
+  return path.join(defaultStateRoot(env), "chatgpt-web-agent", "full-trace");
 }
 
 function defaultRequestLedgerDir(env: NodeJS.ProcessEnv): string {
@@ -262,6 +279,24 @@ export function loadBridgeConfig(
       maxBytes: readPositiveInteger(
         env.CHATGPT_WEB_AGENT_REQUEST_LEDGER_MAX_BYTES,
         64 * 1024 * 1024,
+      ),
+    },
+    fullTrace: {
+      enabled: readBoolean(
+        env.CHATGPT_WEB_AGENT_FULL_TRACE_ENABLED,
+        true,
+        "CHATGPT_WEB_AGENT_FULL_TRACE_ENABLED",
+      ),
+      directory: path.resolve(
+        env.CHATGPT_WEB_AGENT_FULL_TRACE_DIR?.trim() || defaultFullTraceDir(env),
+      ),
+      retentionDays: readPositiveInteger(
+        env.CHATGPT_WEB_AGENT_FULL_TRACE_RETENTION_DAYS,
+        7,
+      ),
+      maxBytes: readPositiveInteger(
+        env.CHATGPT_WEB_AGENT_FULL_TRACE_MAX_BYTES,
+        2 * 1024 * 1024 * 1024,
       ),
     },
     execRuntime: {

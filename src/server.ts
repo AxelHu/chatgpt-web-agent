@@ -6,6 +6,7 @@ import {
   type CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { LocalToolBackend } from "./backend/types.js";
+import { FullTrace } from "./full-trace.js";
 import { RequestLedger, summarizeToolArgs, summarizeToolResult } from "./request-ledger.js";
 import { toolError } from "./result.js";
 import { EpipeSafeStdioServerTransport } from "./stdio-server-transport.js";
@@ -19,6 +20,7 @@ export type LocalMcpServer = {
 export function createLocalMcpServer(
   backend: LocalToolBackend,
   ledger?: RequestLedger,
+  trace?: FullTrace,
 ): LocalMcpServer {
   const server = new Server(
     { name: "chatgpt-web-agent", version: "0.1.0" },
@@ -58,6 +60,13 @@ export function createLocalMcpServer(
       tool: name,
       metadata: summarizeToolArgs(name, normalizedArgs),
     });
+    trace?.record({
+      phase: "mcp_call_received",
+      callId,
+      mcpRequestId,
+      tool: name,
+      payload: { arguments: normalizedArgs },
+    });
     try {
       const result = await backend.callTool(name, normalizedArgs, { callId });
       ledger?.record({
@@ -68,6 +77,15 @@ export function createLocalMcpServer(
         ok: result.isError !== true,
         durationMs: Math.round(performance.now() - startedAt),
         metadata: summarizeToolResult(result),
+      });
+      trace?.record({
+        phase: "mcp_call_completed",
+        callId,
+        mcpRequestId,
+        tool: name,
+        ok: result.isError !== true,
+        durationMs: Math.round(performance.now() - startedAt),
+        payload: result,
       });
       return result;
     } catch (error) {
@@ -80,6 +98,15 @@ export function createLocalMcpServer(
         durationMs: Math.round(performance.now() - startedAt),
         errorKind: error instanceof Error ? error.name : typeof error,
       });
+      trace?.record({
+        phase: "mcp_call_failed",
+        callId,
+        mcpRequestId,
+        tool: name,
+        ok: false,
+        durationMs: Math.round(performance.now() - startedAt),
+        error,
+      });
       throw error;
     }
   });
@@ -91,6 +118,7 @@ export function createLocalMcpServer(
         undefined,
         undefined,
         (event) => ledger?.record(event),
+        (event) => trace?.record(event),
       );
       await server.connect(transport);
     },

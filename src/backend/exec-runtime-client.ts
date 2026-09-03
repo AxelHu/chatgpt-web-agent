@@ -8,6 +8,7 @@ import { toolError } from "../result.js";
 import { OpenClawBackend } from "./openclaw.js";
 import type { LocalToolBackend, LocalToolDescriptor, ToolCallContext } from "./types.js";
 import { RequestLedger, summarizeToolArgs, summarizeToolResult } from "../request-ledger.js";
+import { FullTrace } from "../full-trace.js";
 
 const EXEC_RUNTIME_SESSION_KEY = "agent:chatgpt-web-agent:exec-runtime";
 const EXEC_RUNTIME_SCHEMA_SESSION_KEY = "agent:chatgpt-web-agent:exec-runtime-schema";
@@ -18,11 +19,18 @@ export class ExecRuntimeClientBackend implements LocalToolBackend {
   readonly #toolNames: ReadonlySet<string>;
   readonly #descriptors: Promise<LocalToolDescriptor[]>;
   readonly #ledger?: RequestLedger;
+  readonly #trace?: FullTrace;
 
-  constructor(config: BridgeConfig, toolNames: ReadonlySet<string>, ledger?: RequestLedger) {
+  constructor(
+    config: BridgeConfig,
+    toolNames: ReadonlySet<string>,
+    ledger?: RequestLedger,
+    trace?: FullTrace,
+  ) {
     this.#config = config;
     this.#toolNames = toolNames;
     this.#ledger = ledger;
+    this.#trace = trace;
     const schemaBackend = new OpenClawBackend(config, {
       toolAllowlist: toolNames,
       sessionKey: EXEC_RUNTIME_SCHEMA_SESSION_KEY,
@@ -50,6 +58,13 @@ export class ExecRuntimeClientBackend implements LocalToolBackend {
       backend: this.id,
       metadata: summarizeToolArgs(name, args),
     });
+    this.#trace?.record({
+      phase: "exec_runtime_forward_started",
+      callId: context.callId,
+      tool: name,
+      backend: this.id,
+      payload: { requestId: context.callId, callId: context.callId, tool: name, args },
+    });
     try {
       const result = await callExecRuntimeSocket(
         this.#config.execRuntime.socketPath,
@@ -71,6 +86,15 @@ export class ExecRuntimeClientBackend implements LocalToolBackend {
         durationMs: Math.round(performance.now() - startedAt),
         metadata: summarizeToolResult(result),
       });
+      this.#trace?.record({
+        phase: "exec_runtime_forward_completed",
+        callId: context.callId,
+        tool: name,
+        backend: this.id,
+        ok: result.isError !== true,
+        durationMs: Math.round(performance.now() - startedAt),
+        payload: result,
+      });
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -82,6 +106,15 @@ export class ExecRuntimeClientBackend implements LocalToolBackend {
         ok: false,
         durationMs: Math.round(performance.now() - startedAt),
         errorKind: error instanceof Error ? error.name : typeof error,
+      });
+      this.#trace?.record({
+        phase: "exec_runtime_forward_failed",
+        callId: context.callId,
+        tool: name,
+        backend: this.id,
+        ok: false,
+        durationMs: Math.round(performance.now() - startedAt),
+        error,
       });
       return toolError(`${name} runtime unavailable: ${message}`);
     }

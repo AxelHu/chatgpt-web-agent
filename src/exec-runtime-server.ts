@@ -3,6 +3,7 @@ import net from "node:net";
 import path from "node:path";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { LocalToolBackend } from "./backend/types.js";
+import { FullTrace } from "./full-trace.js";
 import { RequestLedger, summarizeToolArgs, summarizeToolResult } from "./request-ledger.js";
 import {
   EXEC_RUNTIME_PROTOCOL_VERSION,
@@ -43,6 +44,7 @@ export function createExecRuntimeServer(
   backend: LocalToolBackend,
   socketPath: string,
   ledger?: RequestLedger,
+  trace?: FullTrace,
 ): ExecRuntimeServer {
   const memo = new Map<string, MemoEntry>();
   let listening = false;
@@ -72,6 +74,13 @@ export function createExecRuntimeServer(
         tool: request.tool,
         backend: "exec-runtime",
       });
+      trace?.record({
+        phase: "exec_runtime_request_reused",
+        callId: request.callId,
+        tool: request.tool,
+        backend: "exec-runtime",
+        payload: request,
+      });
       if (existing.fingerprint !== fingerprint) {
         return Promise.resolve({
           version: EXEC_RUNTIME_PROTOCOL_VERSION,
@@ -90,6 +99,13 @@ export function createExecRuntimeServer(
       backend: "openclaw",
       metadata: summarizeToolArgs(request.tool, request.args),
     });
+    trace?.record({
+      phase: "openclaw_call_started",
+      callId: request.callId,
+      tool: request.tool,
+      backend: "openclaw",
+      payload: request,
+    });
     const startedAt = performance.now();
     const promise = backend
       .callTool(request.tool, request.args, { callId: request.callId })
@@ -103,6 +119,15 @@ export function createExecRuntimeServer(
             ok: result.isError !== true,
             durationMs: Math.round(performance.now() - startedAt),
             metadata: summarizeToolResult(result),
+          });
+          trace?.record({
+            phase: "openclaw_call_completed",
+            callId: request.callId,
+            tool: request.tool,
+            backend: "openclaw",
+            ok: result.isError !== true,
+            durationMs: Math.round(performance.now() - startedAt),
+            payload: result,
           });
           return {
             version: EXEC_RUNTIME_PROTOCOL_VERSION,
@@ -120,6 +145,15 @@ export function createExecRuntimeServer(
             ok: false,
             durationMs: Math.round(performance.now() - startedAt),
             errorKind: error instanceof Error ? error.name : typeof error,
+          });
+          trace?.record({
+            phase: "openclaw_call_failed",
+            callId: request.callId,
+            tool: request.tool,
+            backend: "openclaw",
+            ok: false,
+            durationMs: Math.round(performance.now() - startedAt),
+            error,
           });
           return {
             version: EXEC_RUNTIME_PROTOCOL_VERSION,
@@ -149,6 +183,14 @@ export function createExecRuntimeServer(
         ok: false,
         error,
       };
+      trace?.record({
+        phase: "exec_runtime_protocol_error",
+        callId: requestId === "unknown" ? undefined : requestId,
+        backend: "exec-runtime",
+        ok: false,
+        error: new Error(error),
+        payload: response,
+      });
       if (!socket.destroyed) socket.end(`${JSON.stringify(response)}\n`);
     };
 
@@ -189,6 +231,13 @@ export function createExecRuntimeServer(
         backend: "exec-runtime",
         metadata: summarizeToolArgs(request.tool, request.args),
       });
+      trace?.record({
+        phase: "exec_runtime_request_received",
+        callId: request.callId,
+        tool: request.tool,
+        backend: "exec-runtime",
+        payload: request,
+      });
       void executeOnce(request).then((response) => {
         if (!socket.destroyed) {
           ledger?.record({
@@ -197,6 +246,14 @@ export function createExecRuntimeServer(
             tool: request.tool,
             backend: "exec-runtime",
             ok: response.ok,
+          });
+          trace?.record({
+            phase: "exec_runtime_response_emitted",
+            callId: request.callId,
+            tool: request.tool,
+            backend: "exec-runtime",
+            ok: response.ok,
+            payload: response,
           });
           socket.end(`${JSON.stringify(response)}\n`);
         } else {
@@ -207,13 +264,27 @@ export function createExecRuntimeServer(
             backend: "exec-runtime",
             ok: false,
           });
+          trace?.record({
+            phase: "exec_runtime_response_dropped",
+            callId: request.callId,
+            tool: request.tool,
+            backend: "exec-runtime",
+            ok: false,
+            payload: response,
+          });
         }
       });
     });
   });
 
   server.on("connection", (socket) => {
-    socket.on("error", () => {
+    socket.on("error", (error) => {
+      trace?.record({
+        phase: "exec_runtime_socket_error",
+        backend: "exec-runtime",
+        ok: false,
+        error,
+      });
       // A caller may disappear after a command was accepted. The request is
       // deliberately not cancelled or replayed; idempotency remains keyed by
       // requestId inside this runtime instance.
