@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -53,6 +54,7 @@ export type GoogleDriveConfig = {
 export type SkillsConfig = {
   agentId: string;
   gatewayUrl: string;
+  gatewayToken?: string;
   catalogDir: string;
   qmdUrl?: string;
   qmdCollection: string;
@@ -66,6 +68,7 @@ export type FeishuConfig = {
   agentId: string;
   accountId: string;
   gatewayUrl: string;
+  gatewayToken?: string;
   requestTimeoutMs: number;
   mediaRoot: string;
   mediaRootOnly: boolean;
@@ -112,6 +115,35 @@ function readEnum<T extends string>(
   return value as T;
 }
 
+function readGatewayToken(env: NodeJS.ProcessEnv): string | undefined {
+  const inline = env.CHATGPT_WEB_AGENT_GATEWAY_TOKEN?.trim();
+  const fileValue = env.CHATGPT_WEB_AGENT_GATEWAY_TOKEN_FILE?.trim();
+  if (inline && fileValue) {
+    throw new Error(
+      "set only one of CHATGPT_WEB_AGENT_GATEWAY_TOKEN or CHATGPT_WEB_AGENT_GATEWAY_TOKEN_FILE",
+    );
+  }
+  if (inline) {
+    return inline;
+  }
+  if (!fileValue) {
+    return undefined;
+  }
+  const tokenPath = path.resolve(fileValue);
+  const stat = fs.lstatSync(tokenPath);
+  if (!stat.isFile() || stat.isSymbolicLink()) {
+    throw new Error("CHATGPT_WEB_AGENT_GATEWAY_TOKEN_FILE must be a regular non-symlink file");
+  }
+  if (process.platform !== "win32" && (stat.mode & 0o077) !== 0) {
+    throw new Error("CHATGPT_WEB_AGENT_GATEWAY_TOKEN_FILE must not be accessible by group or others");
+  }
+  const token = fs.readFileSync(tokenPath, "utf8").trim();
+  if (!token) {
+    throw new Error("CHATGPT_WEB_AGENT_GATEWAY_TOKEN_FILE is empty");
+  }
+  return token;
+}
+
 function defaultExecRuntimeSocket(env: NodeJS.ProcessEnv): string {
   const xdgRuntimeDir = env.XDG_RUNTIME_DIR?.trim();
   if (xdgRuntimeDir) {
@@ -142,6 +174,7 @@ export function loadBridgeConfig(
   cwd: string = process.cwd(),
 ): BridgeConfig {
   const workspaceDir = path.resolve(env.CHATGPT_WEB_AGENT_WORKSPACE?.trim() || cwd);
+  const gatewayToken = readGatewayToken(env);
   const requestedTools = (env.CHATGPT_WEB_AGENT_TOOLS ?? DEFAULT_TOOL_ALLOWLIST.join(","))
     .split(",")
     .map((name) => name.trim())
@@ -194,6 +227,7 @@ export function loadBridgeConfig(
         agentId: env.CHATGPT_WEB_AGENT_SKILLS_AGENT_ID?.trim() || "chatgpt-web-agent",
         gatewayUrl:
           env.CHATGPT_WEB_AGENT_SKILLS_GATEWAY_URL?.trim() || "ws://127.0.0.1:18789",
+        ...(gatewayToken ? { gatewayToken } : {}),
         catalogDir: path.resolve(
           env.CHATGPT_WEB_AGENT_SKILLS_CATALOG_DIR?.trim() || path.join(workspaceDir, "skills-catalog"),
         ),
@@ -237,6 +271,7 @@ export function loadBridgeConfig(
         accountId: env.CHATGPT_WEB_AGENT_FEISHU_ACCOUNT_ID?.trim() || "chatgpt-web-agent",
         gatewayUrl:
           env.CHATGPT_WEB_AGENT_FEISHU_GATEWAY_URL?.trim() || "ws://127.0.0.1:18789",
+        ...(gatewayToken ? { gatewayToken } : {}),
         requestTimeoutMs: readPositiveInteger(
           env.CHATGPT_WEB_AGENT_FEISHU_TIMEOUT_MS,
           10_000,

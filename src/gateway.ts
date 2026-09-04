@@ -2,6 +2,7 @@ import { GatewayClient } from "openclaw/plugin-sdk/gateway-runtime";
 
 export type GatewayRequestOptions = {
   gatewayUrl: string;
+  gatewayToken?: string;
   requestTimeoutMs: number;
   clientDisplayName: string;
   scopes: Array<"operator.read" | "operator.write">;
@@ -31,6 +32,7 @@ export async function requestOpenClawGateway<T>(options: GatewayRequestOptions):
   };
   const client = new GatewayClient({
     url: options.gatewayUrl,
+    ...(options.gatewayToken ? { token: options.gatewayToken } : {}),
     clientName: "gateway-client",
     clientDisplayName: options.clientDisplayName,
     mode: "backend",

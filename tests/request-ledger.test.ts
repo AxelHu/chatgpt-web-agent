@@ -27,13 +27,14 @@ describe("RequestLedger", () => {
       phase: "mcp_call_received",
       callId: "call-1",
       tool: "exec",
-      metadata: summarizeToolArgs("exec", { command: "TOP_SECRET_COMMAND", timeout: 3 }),
+      metadata: summarizeToolArgs("exec", { command: "TOP_SECRET_COMMAND", timeoutSeconds: 3 }),
     });
     const files = fs.readdirSync(directory);
     expect(files).toHaveLength(1);
     const raw = fs.readFileSync(path.join(directory, files[0]!), "utf8");
     expect(raw).toContain('"phase":"mcp_call_received"');
     expect(raw).toContain('"commandChars":18');
+    expect(raw).toContain('"timeoutSec":3');
     expect(raw).not.toContain("TOP_SECRET_COMMAND");
   });
 

@@ -6,7 +6,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ExecRuntimeClientBackend, createExecRuntimeBackend } from "../src/backend/exec-runtime-client.js";
 import type { LocalToolBackend } from "../src/backend/types.js";
 import type { BridgeConfig } from "../src/config.js";
-import { EXEC_RUNTIME_PROTOCOL_VERSION, type ExecRuntimeRequest } from "../src/exec-runtime-protocol.js";
+import {
+  EXEC_RUNTIME_PROTOCOL_VERSION,
+  parseExecRuntimeRequest,
+  type ExecRuntimeRequest,
+} from "../src/exec-runtime-protocol.js";
 import { callExecRuntimeSocket, createExecRuntimeServer, type ExecRuntimeServer } from "../src/exec-runtime-server.js";
 
 describe("exec runtime IPC", () => {
@@ -195,5 +199,17 @@ describe("exec runtime IPC", () => {
     const client = new ExecRuntimeClientBackend(config, new Set(["exec", "process"]));
     const tools = await client.listTools();
     expect(tools.map((tool) => tool.name).sort()).toEqual(["exec", "process"]);
+  });
+
+  it("rejects the pre-8.2 exec runtime protocol instead of mixing timeout contracts", () => {
+    expect(() =>
+      parseExecRuntimeRequest({
+        version: 1,
+        requestId: "legacy-request",
+        callId: "legacy-request",
+        tool: "exec",
+        args: { command: "true", timeout: 1 },
+      }),
+    ).toThrow("unsupported exec runtime protocol version: 1");
   });
 });

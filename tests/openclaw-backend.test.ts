@@ -44,6 +44,42 @@ describe("OpenClawBackend", () => {
     expect(properties).not.toHaveProperty("security");
     expect(properties).not.toHaveProperty("ask");
     expect(properties).not.toHaveProperty("elevated");
+    expect(properties).toHaveProperty("timeoutSeconds");
+    expect(properties).not.toHaveProperty("timeout");
+
+    const read = tools.find((tool) => tool.name === "read");
+    const readProperties = read?.inputSchema.properties as Record<string, unknown>;
+    expect(readProperties.cursor).toMatchObject({ type: "integer", minimum: 0 });
+    expect(readProperties.optional).toMatchObject({ type: "boolean", const: true });
+
+    const processTool = tools.find((tool) => tool.name === "process");
+    const processProperties = processTool?.inputSchema.properties as Record<string, unknown>;
+    expect(processProperties.action).toMatchObject({
+      enum: ["list", "poll", "log", "write", "send-keys", "submit", "paste", "kill", "clear", "remove"],
+    });
+  });
+
+  it("returns image reads as genuine MCP image blocks", async () => {
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+      "base64",
+    );
+    await fs.writeFile(path.join(workspaceDir, "pixel.png"), png);
+
+    const result = await backend.callTool(
+      "read",
+      { path: "pixel.png" },
+      { callId: "read-image" },
+    );
+    expect(result.isError).not.toBe(true);
+    const image = result.content.find((block) => block.type === "image");
+    expect(image).toMatchObject({ type: "image", mimeType: "image/png" });
+    if (!image || image.type !== "image") {
+      throw new Error("expected an image content block");
+    }
+    expect(Buffer.from(image.data, "base64").subarray(0, 8)).toEqual(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
   });
 
   it("reads files and executes commands through OpenClaw tools", async () => {

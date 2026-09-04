@@ -195,6 +195,7 @@ function truncateText(text: string, maxChars: number): string {
 async function fetchStatusFromGateway(config: SkillsConfig, signal?: AbortSignal): Promise<SkillsStatus> {
   const result = await requestOpenClawGateway<SkillsStatus>({
     gatewayUrl: config.gatewayUrl,
+    ...(config.gatewayToken ? { gatewayToken: config.gatewayToken } : {}),
     requestTimeoutMs: config.requestTimeoutMs,
     clientDisplayName: "ChatGPT Web Agent Skills",
     scopes: ["operator.read"],

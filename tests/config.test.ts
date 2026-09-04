@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadBridgeConfig } from "../src/config.js";
@@ -62,6 +64,49 @@ describe("loadBridgeConfig", () => {
       maxSkillFileBytes: 123456,
     });
     expect(loadBridgeConfig({ CHATGPT_WEB_AGENT_SKILLS_ENABLED: "false" }, "/tmp/workspace").skills).toBeUndefined();
+  });
+
+  it("loads one shared Gateway token from a private token file for direct helpers", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chatgpt-web-agent-gateway-token-"));
+    const tokenFile = path.join(dir, "gateway-token");
+    fs.writeFileSync(tokenFile, "fixture-value\n", { mode: 0o600 });
+    try {
+      const config = loadBridgeConfig(
+        {
+          CHATGPT_WEB_AGENT_GATEWAY_TOKEN_FILE: tokenFile,
+          CHATGPT_WEB_AGENT_FEISHU_ENABLED: "true",
+        },
+        "/tmp/workspace",
+      );
+      expect(config.skills?.gatewayToken).toBe("fixture-value");
+      expect(config.feishu?.gatewayToken).toBe("fixture-value");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects ambiguous or overly broad Gateway token sources", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chatgpt-web-agent-gateway-token-"));
+    const tokenFile = path.join(dir, "gateway-token");
+    fs.writeFileSync(tokenFile, "fixture-value\n", { mode: 0o644 });
+    try {
+      expect(() =>
+        loadBridgeConfig(
+          {
+            CHATGPT_WEB_AGENT_GATEWAY_TOKEN: "inline-token",
+            CHATGPT_WEB_AGENT_GATEWAY_TOKEN_FILE: tokenFile,
+          },
+          "/tmp/workspace",
+        ),
+      ).toThrow("set only one");
+      if (process.platform !== "win32") {
+        expect(() =>
+          loadBridgeConfig({ CHATGPT_WEB_AGENT_GATEWAY_TOKEN_FILE: tokenFile }, "/tmp/workspace"),
+        ).toThrow("must not be accessible by group or others");
+      }
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("parses explicit tool and exec policy overrides", () => {

@@ -15,6 +15,10 @@
 - `process`
 - `apply_patch`
 
+当前 OpenClaw 依赖固定为 `2026.8.2`。对应公共合同里 `exec` 使用
+`timeoutSeconds`（秒），而 `process.poll.timeout` 仍使用毫秒；下方独立的
+`rescue_exec.timeout` 也仍是它自己的秒制参数，不与 OpenClaw `exec` 混用。
+
 以及一个由 MCP server 自己直接执行、独立于 OpenClaw Gateway/runtime 的救援工具：
 
 - `rescue_exec(command, workdir?, env?, timeout?)`
@@ -48,6 +52,11 @@
 时可通过独立 QMD collection 返回少量候选的名字和描述。`skill_read` 只接受 Skill 名称/key，
 canonical `SKILL.md` 路径始终由实时 OpenClaw `skills.status` 解析，不接受客户端提供文件路径。
 MCP initialize instructions 还会提示客户端：仅当任务明显可能依赖本地工具、服务、工作流或操作规范且当前上下文不足时主动发现 Skill；普通自包含任务不查询 Skill。
+
+Skills 与 Feishu 是窄范围的 Gateway-direct helper。如果 OpenClaw Gateway 开启 token auth，
+部署时需要显式给它们同一份 Gateway token。长期服务推荐使用
+`CHATGPT_WEB_AGENT_GATEWAY_TOKEN_FILE` 指向 `0600` 的普通文件；也支持
+`CHATGPT_WEB_AGENT_GATEWAY_TOKEN`，但不建议把 token 内联到 systemd/Tunnel 命令行。
 
 飞书接口刻意不复用通用 `message` 工具的宽 schema。发送账号由部署配置固定，调用方不能选择
 `accountId`；目标必须显式使用 `chat:oc_...` 或 `user:ou_...`。`feishu_directory`
@@ -88,7 +97,9 @@ node dist/cli.js
 
 `exec` / `process` 仍直接复用 OpenClaw Plugin SDK，但由独立的本地 exec runtime 持有进程
 registry 和 supervisor；MCP bridge 只通过 Unix socket 转发这两个工具。因此 Tunnel/MCP bridge
-重启不会丢失正在运行的 background session。exec runtime 自身重启时，v1 不承诺恢复旧 session；
+重启不会丢失正在运行的 background session。8.2 wrapper 使用 exec-runtime protocol v2，
+会拒绝旧 v1 frontend/runtime 混连，避免 `exec.timeout` 与 `exec.timeoutSeconds` 静默错配。
+exec runtime 自身重启时不承诺恢复旧 session；
 systemd 应负责自动拉起 runtime，并通过 control group 清理旧子进程，避免 orphan。
 
 ### 本地诊断日志

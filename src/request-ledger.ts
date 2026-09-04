@@ -81,7 +81,7 @@ export function summarizeToolArgs(tool: string, args: Record<string, unknown>): 
   if (tool === "exec") {
     return {
       workdir: text(args.workdir),
-      timeoutSec: numeric(args.timeout),
+      timeoutSec: numeric(args.timeoutSeconds),
       yieldMs: numeric(args.yieldMs),
       background: boolean(args.background),
       pty: boolean(args.pty),
@@ -93,6 +93,8 @@ export function summarizeToolArgs(tool: string, args: Record<string, unknown>): 
       path: text(args.path),
       offset: numeric(args.offset),
       limit: numeric(args.limit),
+      cursor: numeric(args.cursor),
+      optional: boolean(args.optional),
     };
   }
   return {};

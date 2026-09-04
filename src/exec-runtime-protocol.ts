@@ -1,6 +1,9 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
-export const EXEC_RUNTIME_PROTOCOL_VERSION = 1 as const;
+// v2 is the OpenClaw 8.2 exec contract: exec.timeoutSeconds replaces exec.timeout.
+// Keep this version explicit so a newly upgraded MCP frontend fails fast instead
+// of silently sending 8.2 arguments to a persistent 7.x runtime.
+export const EXEC_RUNTIME_PROTOCOL_VERSION = 2 as const;
 export const EXEC_RUNTIME_TOOL_NAMES = new Set(["exec", "process"] as const);
 
 export type ExecRuntimeToolName = "exec" | "process";

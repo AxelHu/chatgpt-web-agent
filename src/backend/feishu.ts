@@ -345,6 +345,7 @@ function createDefaultDeps(config: FeishuConfig): FeishuBackendDeps {
     getAccountStatus: async (signal) => {
       const status = await requestOpenClawGateway<ChannelsStatus>({
         gatewayUrl: config.gatewayUrl,
+        ...(config.gatewayToken ? { gatewayToken: config.gatewayToken } : {}),
         requestTimeoutMs: config.requestTimeoutMs,
         clientDisplayName: "ChatGPT Web Agent Feishu Identity",
         scopes: ["operator.read"],
@@ -357,6 +358,7 @@ function createDefaultDeps(config: FeishuConfig): FeishuBackendDeps {
     getBotAccountStatuses: async (signal) => {
       const status = await requestOpenClawGateway<ChannelsStatus>({
         gatewayUrl: config.gatewayUrl,
+        ...(config.gatewayToken ? { gatewayToken: config.gatewayToken } : {}),
         requestTimeoutMs: config.requestTimeoutMs,
         clientDisplayName: "ChatGPT Web Agent Feishu Bot Directory",
         scopes: ["operator.read"],
@@ -369,6 +371,7 @@ function createDefaultDeps(config: FeishuConfig): FeishuBackendDeps {
     requestAction: async (action, params, signal) =>
       requestOpenClawGateway<GatewayActionResult>({
         gatewayUrl: config.gatewayUrl,
+        ...(config.gatewayToken ? { gatewayToken: config.gatewayToken } : {}),
         requestTimeoutMs: config.requestTimeoutMs,
         clientDisplayName: "ChatGPT Web Agent Feishu",
         scopes: ["operator.read", "operator.write"],
