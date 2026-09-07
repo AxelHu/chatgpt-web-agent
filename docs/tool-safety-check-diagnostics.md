@@ -1,5 +1,19 @@
 # 工具安全拦截：分层诊断与实测
 
+## 后续核验与工程修正（2026-09-07）
+
+新找到的官方跟进比此前用户报告更明确：[OpenAI Support 8 月 5 日及 8 月 16 日](https://community.openai.com/t/chatgpt-app-mcp-tool-calls-blocked-by-openai-safety-checks-before-reaching-mcp-server/1386059?page=2)承认部分合法只读请求在到达 MCP 之前被错误拦截，已经部署改善，但仍有部分请求受影响。无法由此确定每个本地案例的内部分类原因，更不能认定每次调用必经某个特定“小模型”。
+
+[最新权限说明](https://help.openai.com/en/articles/20001495)区分审批选项与平台安全保护。个别 app/account 可能提供 Allow all actions，标准全局选择器不提供该项；它不会关闭安全检查。设置路径通常为 Settings → Apps/Plugins → 对应应用/Connected account → Permissions。旧界面可能标为 App Preferences / Ask permission，工作区可能标为 Configure approvals，不能把 Configure actions 与审批选项混淆。
+
+[7 月 20 日第一手反馈](https://community.openai.com/t/chatgpt-app-mcp-tool-calls-blocked-by-openai-safety-checks-before-reaching-mcp-server/1386059)称，对其自建 MCP 使用 Allow all actions 后问题明显减少但未消失。这是个例，不是平台保证；本次没有改变用户账号权限，也未找到官方支持的关闭平台检查总开关。
+
+工程修正：在公共 `tools/list` 层补齐真实 annotations：read、skills、Drive 列表/查询/元数据、飞书目录为只读；exec/process/rescue_exec、apply_patch 及下载/导出的本地写入仍为写操作；上传、建目录、发消息为新增型写操作。工具名、参数合同、实际授权与执行策略不变，不把混合动作工具伪装为只读。新增协议层测试验证实际发送的声明，而不只测内部函数。
+
+Desktop bridge 同轮增加独立的有界 request ledger/full trace，详见其本地仓库 `docs/request-diagnostics.md`。运行日志启用与 ChatGPT 已批准的工具 schema 更新是两件事；仅修改本地代码或刷新 Desktop 插件目录，不能宣称账号已接受新 annotations。需要正常的 app Refresh/update 及适用时的新会话。
+
+以下是前一轮现场诊断记录，其“本轮尚未修改”描述是当时状态，不覆盖上述后续工程进展。
+
 日期：2026-09-07（Asia/Shanghai）。操作者：ChatGPT Web Agent。
 
 用户授权：复测读取自己的 ChatGPT 会话与 SSH 访问家中 M4，调查安全拦截位置和原因。这里只记录结果与待验证项，不放宽执行策略、不关闭检查、不以其他通道重做被拒绝的操作。

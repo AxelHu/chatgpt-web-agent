@@ -10,6 +10,7 @@ import { FullTrace } from "./full-trace.js";
 import { RequestLedger, summarizeToolArgs, summarizeToolResult } from "./request-ledger.js";
 import { toolError } from "./result.js";
 import { EpipeSafeStdioServerTransport } from "./stdio-server-transport.js";
+import { annotateLocalTool } from "./tool-metadata.js";
 
 export type LocalMcpServer = {
   server: Server;
@@ -32,7 +33,7 @@ export function createLocalMcpServer(
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: await backend.listTools(),
+    tools: (await backend.listTools()).map(annotateLocalTool),
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request, extra): Promise<CallToolResult> => {

@@ -5,6 +5,24 @@ import { createLocalMcpServer } from "../src/server.js";
 import type { LocalToolBackend } from "../src/backend/types.js";
 
 describe("createLocalMcpServer", () => {
+  it("publishes truthful annotations over tools/list without changing schemas", async () => {
+    const inputSchema = { type: "object", properties: { path: { type: "string" } } };
+    const backend: LocalToolBackend = {
+      id: "stub",
+      async listTools() { return ["read", "exec", "drive_download"].map((name) => ({ name, description: "original", inputSchema })); },
+      async callTool() { return { content: [] }; },
+    };
+    const local = createLocalMcpServer(backend);
+    const client = new Client({ name: "metadata-server-test", version: "0.1.0" });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    try {
+      await Promise.all([local.server.connect(st), client.connect(ct)]);
+      const { tools } = await client.listTools();
+      expect(tools.find((tool) => tool.name === "read")?.annotations?.readOnlyHint).toBe(true);
+      for (const name of ["exec", "drive_download"]) expect(tools.find((tool) => tool.name === name)?.annotations?.readOnlyHint).toBe(false);
+      for (const tool of tools) expect(tool.inputSchema).toEqual(inputSchema);
+    } finally { await client.close(); await local.close(); }
+  });
   it("advertises lightweight proactive Skill discovery instructions", async () => {
     const backend: LocalToolBackend = {
       id: "stub",

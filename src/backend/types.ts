@@ -1,4 +1,4 @@
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 
 export type JsonSchema = Record<string, unknown>;
 
@@ -7,6 +7,7 @@ export type LocalToolDescriptor = {
   title?: string;
   description: string;
   inputSchema: JsonSchema;
+  annotations?: Tool["annotations"];
 };
 
 export type ToolCallContext = {
