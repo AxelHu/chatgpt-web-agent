@@ -12,6 +12,10 @@
 
 Desktop bridge 同轮增加独立的有界 request ledger/full trace，详见其本地仓库 `docs/request-diagnostics.md`。运行日志启用与 ChatGPT 已批准的工具 schema 更新是两件事；仅修改本地代码或刷新 Desktop 插件目录，不能宣称账号已接受新 annotations。需要正常的 app Refresh/update 及适用时的新会话。
 
+验收：Desktop 实现 `22e15cf` 通过 38 项测试；WebAgentTools 实现 `515b326` 通过 89 项测试，两边 smoke 均通过。两项 Tunnel/MCP 接入服务已分别重载，控制面健康通过；Gateway 与 exec-runtime PID 未变。11:13:42 的真实 Desktop 搜索成功，新的逐调用日志完整记录到响应写回。尚无受控误拦频率对比。
+
+WebAgentTools 已推送既有私有 Gitea `origin/main`。Desktop 原本没有配置 Git remote，匿名查询无可见匹配，认证元数据查询被平台拦截；因此只提交到该本地仓库 `master`，没有猜测或新增远端。未创建 PR，也没有改用户的应用审批设置；这些状态不能由本地测试成功替代。
+
 以下是前一轮现场诊断记录，其“本轮尚未修改”描述是当时状态，不覆盖上述后续工程进展。
 
 日期：2026-09-07（Asia/Shanghai）。操作者：ChatGPT Web Agent。
