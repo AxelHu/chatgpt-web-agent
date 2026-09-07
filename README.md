@@ -146,6 +146,12 @@ export CHATGPT_WEB_AGENT_EXEC_SECURITY=full
 export CHATGPT_WEB_AGENT_EXEC_ASK=off
 ```
 
+## ChatGPT 账号自定义指令
+
+可精确恢复的正文存放于 [`docs/chatgpt-custom-instructions.md`](docs/chatgpt-custom-instructions.md)，
+包含外部内容与 MCP 授权边界，以及 Astra 长线任务的持续推进偏好。
+该文件是手动填写账号设置的存档，不会自动加载；设置是否已填写以文档中的确认状态为准。
+
 ## 推荐工作流：监工会话 + 工作会话
 
 对于需要持续推进的数学研究、工程开发等长任务，推荐把普通工作会话与一个轻量的独立监工会话分开：工作会话保留项目上下文并实际干活，监工会话通过统一 Scheduled Task 定期读取真实状态，只对 idle 的正常任务发送极短继续提示，并把疑似会话触顶、项目/重大阶段完成、需要用户决策或持续工具故障等高信号情况通过飞书升级给用户。
