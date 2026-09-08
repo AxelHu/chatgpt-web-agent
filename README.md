@@ -146,6 +146,15 @@ export CHATGPT_WEB_AGENT_EXEC_SECURITY=full
 export CHATGPT_WEB_AGENT_EXEC_ASK=off
 ```
 
+## OpenClaw 源码构建与运行版本一致性
+
+不要在运行中的 Gateway 所使用的源码目录里覆盖 `dist`，然后以“代码行为没变”或
+“健康接口正常”为由延后重启。旧进程仍可能引用已经被构建清除的带哈希延迟加载模块，
+造成命令、会话列表等入口局部失效。构建、激活和真实入口验收必须形成一个完整流程。
+
+事故证据、可用的部署方式与验证要求见
+[`docs/openclaw-build-runtime-consistency.md`](docs/openclaw-build-runtime-consistency.md)。
+
 ## ChatGPT 账号自定义指令
 
 可精确恢复的正文存放于 [`docs/chatgpt-custom-instructions.md`](docs/chatgpt-custom-instructions.md)，
