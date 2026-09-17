@@ -1,7 +1,7 @@
 {
   "name": "@agents/chatgpt-web-agent",
   "version": "0.1.0",
-  "description": "Persistent local workspace MCP server for exploration, development, verification, automation, Git/Gitea, and durable project state.",
+  "description": "Persistent local MCP workspace and computer tools for files, repositories, Shell/processes, services, build/test, Git/Gitea, exploration, verification, automation, and durable project records.",
   "type": "module",
   "bin": {
     "chatgpt-web-agent": "dist/cli.js",
