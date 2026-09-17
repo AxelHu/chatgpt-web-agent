@@ -1,4 +1,4 @@
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 import { toolError } from "../result.js";
 import type { LocalToolBackend, LocalToolDescriptor, ToolCallContext } from "./types.js";
 

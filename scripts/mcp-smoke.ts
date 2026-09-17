@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { Client } from "@modelcontextprotocol/client";
 import { createExecRuntimeBackend } from "../src/backend/exec-runtime-client.js";
 import { loadBridgeConfig } from "../src/config.js";
 import { createExecRuntimeServer } from "../src/exec-runtime-server.js";

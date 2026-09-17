@@ -1,6 +1,8 @@
 import type { AddressInfo } from "node:net";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import {
+  Client,
+  StreamableHTTPClientTransport,
+} from "@modelcontextprotocol/client";
 import { afterEach, describe, expect, it } from "vitest";
 import type { LocalToolBackend } from "../src/backend/types.js";
 import { createHttpMcpServer, type HttpMcpServer } from "../src/http-server.js";
@@ -40,67 +42,73 @@ async function listen(server: HttpMcpServer): Promise<URL> {
   return new URL(`http://127.0.0.1:${address.port}/mcp`);
 }
 
-async function waitFor(predicate: () => boolean, timeoutMs = 500): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!predicate()) {
-    if (Date.now() >= deadline) throw new Error("condition not reached before timeout");
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
+async function assertToolSurface(client: Client, expectedPath: string): Promise<void> {
+  expect(client.getInstructions()).toContain("primary interface");
+  expect(client.getInstructions()).toContain("durable working environment");
+  expect(client.getInstructions()).toContain("Gitea issue");
+  const { tools } = await client.listTools();
+  expect(tools.map((tool) => tool.name)).toEqual(["read"]);
+  const result = await client.callTool({ name: "read", arguments: { path: expectedPath } });
+  expect(result.content).toEqual([{ type: "text", text: `read:${expectedPath}` }]);
 }
 
-describe("Streamable HTTP MCP server", () => {
-  it("supports a stateful session, tool discovery/call, and clean client close", async () => {
+describe("sessionless Streamable HTTP MCP server", () => {
+  it("serves the modern 2026-07-28 per-request protocol", async () => {
     const mcp = createHttpMcpServer({ backend: stubBackend() });
     const endpoint = await listen(mcp);
-    const client = new Client({ name: "http-test", version: "0.1.0" });
+    const client = new Client(
+      { name: "http-modern-test", version: "0.1.0" },
+      { versionNegotiation: { mode: { pin: "2026-07-28" } } },
+    );
     const transport = new StreamableHTTPClientTransport(endpoint);
     await client.connect(transport);
-    expect(mcp.sessionCount()).toBe(1);
-    expect(client.getInstructions()).toContain("local computer");
 
-    const { tools } = await client.listTools();
-    expect(tools.map((tool) => tool.name)).toEqual(["read"]);
-    const result = await client.callTool({ name: "read", arguments: { path: "/tmp/demo" } });
-    expect(result.content).toEqual([{ type: "text", text: "read:/tmp/demo" }]);
-
-    await transport.terminateSession();
-    await waitFor(() => mcp.sessionCount() === 0);
+    expect(client.getProtocolEra()).toBe("modern");
+    expect(client.getNegotiatedProtocolVersion()).toBe("2026-07-28");
+    expect(transport.sessionId).toBeUndefined();
+    await assertToolSurface(client, "/tmp/modern");
+    expect(transport.sessionId).toBeUndefined();
     await client.close();
   });
 
-  it("expires an abandoned session after the idle TTL", async () => {
-    const mcp = createHttpMcpServer({
-      backend: stubBackend(),
-      sessionIdleTtlMs: 40,
-      sessionSweepIntervalMs: 10,
+  it("keeps 2025-era clients working through the stateless compatibility leg", async () => {
+    const mcp = createHttpMcpServer({ backend: stubBackend() });
+    const endpoint = await listen(mcp);
+    const client = new Client({ name: "http-legacy-test", version: "0.1.0" });
+    const transport = new StreamableHTTPClientTransport(endpoint);
+    await client.connect(transport);
+
+    expect(client.getProtocolEra()).toBe("legacy");
+    expect(client.getNegotiatedProtocolVersion()).not.toBe("2026-07-28");
+    expect(transport.sessionId).toBeUndefined();
+    await assertToolSurface(client, "/tmp/legacy");
+    expect(transport.sessionId).toBeUndefined();
+    await client.close();
+  });
+
+  it("reports sessionless health and rejects non-local browser origins", async () => {
+    const mcp = createHttpMcpServer({ backend: stubBackend() });
+    const endpoint = await listen(mcp);
+    const base = new URL(endpoint);
+
+    const health = await fetch(new URL("/healthz", base));
+    expect(health.status).toBe(200);
+    await expect(health.json()).resolves.toMatchObject({
+      ok: true,
+      mode: "sessionless",
+      modernProtocol: "2026-07-28",
+      legacyCompatibility: "stateless",
+      sessions: 0,
     });
-    const endpoint = await listen(mcp);
-    const client = new Client({ name: "http-abandon-test", version: "0.1.0" });
-    const transport = new StreamableHTTPClientTransport(endpoint);
-    await client.connect(transport);
-    expect(mcp.sessionCount()).toBe(1);
 
-    await waitFor(() => mcp.sessionCount() === 0, 1000);
-    await client.close().catch(() => undefined);
-  });
-});
-
-describe("stateless Streamable HTTP MCP server", () => {
-  it("supports initialize, discovery, and tool calls without protocol sessions", async () => {
-    const mcp = createHttpMcpServer({ backend: stubBackend(), sessionMode: "stateless" });
-    const endpoint = await listen(mcp);
-    const client = new Client({ name: "http-stateless-test", version: "0.1.0" });
-    const transport = new StreamableHTTPClientTransport(endpoint);
-    await client.connect(transport);
-    expect(transport.sessionId).toBeUndefined();
-    expect(mcp.sessionCount()).toBe(0);
-
-    const { tools } = await client.listTools();
-    expect(tools.map((tool) => tool.name)).toEqual(["read"]);
-    const result = await client.callTool({ name: "read", arguments: { path: "/tmp/stateless" } });
-    expect(result.content).toEqual([{ type: "text", text: "read:/tmp/stateless" }]);
-    expect(transport.sessionId).toBeUndefined();
-    expect(mcp.sessionCount()).toBe(0);
-    await client.close();
+    const rejected = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://example.com",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }),
+    });
+    expect(rejected.status).toBe(403);
   });
 });

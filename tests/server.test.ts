@@ -1,5 +1,4 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { describe, expect, it } from "vitest";
 import { createLocalMcpServer } from "../src/server.js";
 import type { LocalToolBackend } from "../src/backend/types.js";
@@ -38,9 +37,11 @@ describe("createLocalMcpServer", () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     try {
       await Promise.all([local.server.connect(serverTransport), client.connect(clientTransport)]);
+      expect(client.getInstructions()).toContain("primary interface");
+      expect(client.getInstructions()).toContain("Proactively use it");
+      expect(client.getInstructions()).toContain("Gitea issue");
       expect(client.getInstructions()).toContain("skills_list");
       expect(client.getInstructions()).toContain("skill_read");
-      expect(client.getInstructions()).toContain("Do not query Skills for ordinary self-contained tasks");
     } finally {
       await client.close();
       await local.close();

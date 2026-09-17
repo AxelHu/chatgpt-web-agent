@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 import type { BridgeConfig } from "../config.js";
 import { toolError } from "../result.js";
 import type { JsonSchema, LocalToolBackend, LocalToolDescriptor, ToolCallContext } from "./types.js";

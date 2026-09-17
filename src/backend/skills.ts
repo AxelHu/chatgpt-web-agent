@@ -1,9 +1,8 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import type { CallToolResult } from "@modelcontextprotocol/client";
 import type { SkillsConfig } from "../config.js";
 import { requestOpenClawGateway } from "../gateway.js";
 import { toolError } from "../result.js";
@@ -233,7 +232,6 @@ async function semanticSearchQmd(
           rerank: false,
         },
       },
-      undefined,
       { signal, timeout: config.requestTimeoutMs },
     );
     if (result.isError) {

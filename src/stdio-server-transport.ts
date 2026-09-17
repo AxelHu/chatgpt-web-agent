@@ -1,19 +1,17 @@
 import process from "node:process";
 import type { Readable, Writable } from "node:stream";
-import { ReadBuffer, serializeMessage } from "@modelcontextprotocol/sdk/shared/stdio.js";
-import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
+import { ReadBuffer, serializeMessage } from "@modelcontextprotocol/server";
+import type { Transport, JSONRPCMessage } from "@modelcontextprotocol/server";
 import type { FullTraceEvent } from "./full-trace.js";
 import type { RequestLedgerEvent } from "./request-ledger.js";
 
 /**
- * Temporary v1 SDK backport for stdout failures such as EPIPE.
+ * Compatibility transport for stdout failures such as EPIPE.
  *
- * @modelcontextprotocol/sdk 1.29.0 only listens for stdin errors. If the MCP
- * host closes its read side before a response is written, Node emits an
- * unhandled stdout error and terminates the whole server process. The upstream
- * v1 fix is not released yet, so keep the compatibility shim local until a
- * released SDK version contains equivalent behavior.
+ * This legacy stdio fallback keeps explicit output-error handling so a host
+ * closing its read side cannot turn an EPIPE into an unhandled process error.
+ * Production uses the independent HTTP MCP service; stdio remains a rollback
+ * path and test surface.
  */
 export class EpipeSafeStdioServerTransport implements Transport {
   private readonly readBuffer = new ReadBuffer();

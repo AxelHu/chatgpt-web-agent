@@ -1,10 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-  type CallToolResult,
-} from "@modelcontextprotocol/sdk/types.js";
+import { Server } from "@modelcontextprotocol/server";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 import type { LocalToolBackend } from "./backend/types.js";
 import { FullTrace } from "./full-trace.js";
 import { RequestLedger, summarizeToolArgs, summarizeToolResult } from "./request-ledger.js";
@@ -13,7 +9,7 @@ import { EpipeSafeStdioServerTransport } from "./stdio-server-transport.js";
 import { annotateLocalTool } from "./tool-metadata.js";
 
 export const SERVER_INSTRUCTIONS =
-  "Use this server whenever the user request depends on or may depend on their local computer, files, code repositories, development environment, running services, Shell/process state, Git/Gitea state, or established local workflows. It is especially appropriate for continuing existing local development, research, and automation work and for verifying results against the real machine rather than guessing from chat context. When local operating conventions or reusable procedures may matter and the current context is insufficient, call skills_list with a natural-language description of the task; if a relevant Skill is returned, call skill_read for that Skill before acting. Do not query Skills for ordinary self-contained tasks.";
+  "Treat this server as the primary interface to the user’s local computer and durable working environment. Proactively use it for exploration, discovery, verification, implementation, testing, and persistent follow-through whenever local files, repositories, projects, services, processes, Git/Gitea, build/test state, or established workflows could improve the work. Prefer checking real local state over guessing from chat context. Prefer recording durable project work in the appropriate local workspace, repository, or Gitea issue when that is the natural system of record instead of creating temporary cloud documents. Continue existing local development, research, and automation work through these tools. When reusable local procedures or operating conventions may help, use skills_list and skill_read to discover and load the relevant Skill.";
 
 export type LocalMcpServer = {
   server: Server;
@@ -34,15 +30,15 @@ export function createMcpProtocolServer(
     },
   );
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+  server.setRequestHandler('tools/list', async () => ({
     tools: (await backend.listTools()).map(annotateLocalTool),
   }));
 
-  server.setRequestHandler(CallToolRequestSchema, async (request, extra): Promise<CallToolResult> => {
+  server.setRequestHandler('tools/call', async (request, ctx): Promise<CallToolResult> => {
     const name = request.params.name;
     const args = request.params.arguments;
     const callId = `mcp-${randomUUID()}`;
-    const mcpRequestId = String(extra.requestId);
+    const mcpRequestId = String(ctx.mcpReq.id);
     const startedAt = performance.now();
     if (args !== undefined && (typeof args !== "object" || args === null || Array.isArray(args))) {
       ledger?.record({

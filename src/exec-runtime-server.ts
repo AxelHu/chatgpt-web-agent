@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 import type { LocalToolBackend } from "./backend/types.js";
 import { FullTrace } from "./full-trace.js";
 import { RequestLedger, summarizeToolArgs, summarizeToolResult } from "./request-ledger.js";

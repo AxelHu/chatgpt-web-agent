@@ -1,4 +1,4 @@
-import type { CallToolResult, ContentBlock } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, ContentBlock } from "@modelcontextprotocol/server";
 
 function stringifyUnknown(value: unknown): string {
   if (typeof value === "string") {

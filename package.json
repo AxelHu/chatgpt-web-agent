@@ -1,7 +1,7 @@
 {
   "name": "@agents/chatgpt-web-agent",
   "version": "0.1.0",
-  "description": "Local MCP bridge that gives ChatGPT Web controlled access to local tool backends.",
+  "description": "Persistent local workspace MCP server for exploration, development, verification, automation, Git/Gitea, and durable project state.",
   "type": "module",
   "bin": {
     "chatgpt-web-agent": "dist/cli.js",
@@ -28,9 +28,11 @@
     "node": ">=22.22.3 <23 || >=24.15.0 <25 || >=25.9.0"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.29.0",
     "googleapis": "^174.0.1",
-    "openclaw": "2026.8.2"
+    "openclaw": "2026.8.2",
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "@modelcontextprotocol/node": "^2.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.18.0",

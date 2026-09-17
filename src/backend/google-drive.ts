@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 import { google, type drive_v3 } from "googleapis";
 import type { GoogleDriveConfig } from "../config.js";
 import { toolError } from "../result.js";

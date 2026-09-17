@@ -5,13 +5,6 @@ import path from "node:path";
 import { createHttpMcpServer } from "./http-server.js";
 import { createBridgeRuntime } from "./runtime.js";
 
-function positiveInteger(value: string | undefined, fallback: number, name: string): number {
-  if (!value) return fallback;
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new Error(`${name} must be a positive integer`);
-  return parsed;
-}
-
 function defaultSocketPath(): string {
   const runtime = process.env.XDG_RUNTIME_DIR?.trim();
   if (runtime) return path.join(path.resolve(runtime), "chatgpt-web-agent", "mcp.sock");
@@ -41,20 +34,6 @@ async function main(): Promise<void> {
   }
   const tcp = listenValue ? parseLoopbackListen(listenValue) : undefined;
   const socketPath = tcp ? undefined : path.resolve(socketValue || defaultSocketPath());
-  const idleTtlMs = positiveInteger(
-    process.env.CHATGPT_WEB_AGENT_MCP_SESSION_IDLE_TTL_MS,
-    20 * 60_000,
-    "CHATGPT_WEB_AGENT_MCP_SESSION_IDLE_TTL_MS",
-  );
-  const maxSessions = positiveInteger(
-    process.env.CHATGPT_WEB_AGENT_MCP_MAX_SESSIONS,
-    16,
-    "CHATGPT_WEB_AGENT_MCP_MAX_SESSIONS",
-  );
-  const sessionModeValue = process.env.CHATGPT_WEB_AGENT_MCP_HTTP_MODE?.trim() || "stateful";
-  if (!(sessionModeValue === "stateful" || sessionModeValue === "stateless")) {
-    throw new Error("CHATGPT_WEB_AGENT_MCP_HTTP_MODE must be stateful or stateless");
-  }
   if (socketPath) {
     fs.mkdirSync(path.dirname(socketPath), { recursive: true, mode: 0o700 });
     try {
@@ -66,14 +45,7 @@ async function main(): Promise<void> {
     }
   }
 
-  const mcp = createHttpMcpServer({
-    backend,
-    ledger,
-    trace,
-    sessionIdleTtlMs: idleTtlMs,
-    maxSessions,
-    sessionMode: sessionModeValue,
-  });
+  const mcp = createHttpMcpServer({ backend, ledger, trace });
   let closing = false;
   const close = async () => {
     if (closing) return;

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 import type { FeishuConfig } from "../config.js";
 import { requestOpenClawGateway } from "../gateway.js";
 import { toolError } from "../result.js";

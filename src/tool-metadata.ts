@@ -1,4 +1,4 @@
-import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { Tool } from "@modelcontextprotocol/server";
 import type { LocalToolDescriptor } from "./backend/types.js";
 
 const read = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };

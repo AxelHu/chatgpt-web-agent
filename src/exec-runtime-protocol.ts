@@ -1,4 +1,4 @@
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 
 // v2 is the OpenClaw 8.2 exec contract: exec.timeoutSeconds replaces exec.timeout.
 // Keep this version explicit so a newly upgraded MCP frontend fails fast instead

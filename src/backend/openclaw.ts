@@ -3,7 +3,7 @@ import {
   createOpenClawCodingTools,
   type AnyAgentTool,
 } from "openclaw/plugin-sdk/agent-harness";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 import type { BridgeConfig } from "../config.js";
 import { normalizeToolResult, toolError } from "../result.js";
 import type { JsonSchema, LocalToolBackend, LocalToolDescriptor, ToolCallContext } from "./types.js";
