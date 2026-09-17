@@ -1,5 +1,15 @@
 # 工具安全拦截：分层诊断与实测
 
+## 2026-09-17：动态工具暴露/绑定的作用域比单 turn 更细
+
+普通 Chat 长回合实测进一步区分出“工具目录/定义可见”和“当前阶段实际可调用绑定”两层。出现过 `list_resources` 已返回 `WebAgentTools.exec`（以及其他 App action）的完整定义，但紧接着 direct invoke 返回 `Resource not found`；该失败没有进入本地 MCP request ledger。下一条用户消息形成新 turn 后，在没有重启 MCP、Tunnel 或修改 App 配置的情况下，同一 `WebAgentTools.exec` 立即恢复成功。
+
+同时，像素城堡长回合中还观察到同一个持久化 assistant turn 的前段明确只有读取能力，后段重新 Tool Search 后 `exec` / `apply_patch` / `process` 恢复并完成真实开发、测试和推送。这说明当前外部证据不支持“整个 conversation 永久失去工具”，也不支持“一个 turn 开始时工具集合固定到结束”；更保守的描述是 turn / reasoning-stage 范围内的动态 hydration / binding 状态可能变化。这里不推断 OpenAI 内部具体使用了何种 router、缓存或分类模型。
+
+本地对照窗口为 2026-09-17 12:51:03–15:06:43（Asia/Shanghai）：request ledger 收到 655 次 MCP 调用，654 次完成，其中 645 次 `ok=true`、9 次普通工具级 `ok=false`；`mcp_call_failed=0`、`mcp_call_rejected=0`，`mcp_http_handler_error`、`mcp_http_adapter_error`、`mcp_http_request_failed`、`mcp_transport_send_failed`、transport input/output error 均为 0。该窗口 MCP 服务无重启，Tunnel 也无新增 start/stop/restart；healthz 为 sessionless、sessions=0。并发时间线中，某些 Chat 报告“只有 read”时，其他会话仍通过同一 MCP/Tunnel 正常执行 `exec`、`apply_patch` 和 `process`。因此这些“只读/Resource not found”样本不能由本地 transport 故障解释。
+
+操作结论：预期的执行/写入 action 暂时缺失、只剩读取，或 Tool Search 已能看到定义但 direct invoke 仍 `Resource not found` 时，不应据此提前结束整个长回合，也不应立即重启本地服务。先继续无需该 action 的独立工作；在同一回合后续已有新的实质进展或再次真正需要该能力时，可有限重新发现并原样尝试，恢复即继续原任务。若本轮仍未恢复，下一用户回合优先复查；只有连续多个回合仍不可用并有进一步本地证据时，才升级为会话接力或本地故障排查。该策略与“已绑定 action 的 call-level 审核误拦最多六次原参数重试”是不同故障层，不混用重试预算。
+
 后续按时间线核对 9 月 3–7 日可保留日志，发现大量旧 `timeout` 参数错误、真实 Git 状态/归档远端错误，以及 MCP 信封 `ok` 与 shell 退出码的差异；详见 [Git 与工具失败审计](git-tool-failure-audit-20260907.md)。这不将下述历史平台误拦样本改判为本地故障，也不把所有本地故障归为平台误拦。
 
 ## 用户授权下的原样重试（2026-09-07，12:28 Asia/Shanghai）
