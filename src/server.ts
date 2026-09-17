@@ -12,23 +12,25 @@ import { toolError } from "./result.js";
 import { EpipeSafeStdioServerTransport } from "./stdio-server-transport.js";
 import { annotateLocalTool } from "./tool-metadata.js";
 
+export const SERVER_INSTRUCTIONS =
+  "Use this server whenever the user request depends on or may depend on their local computer, files, code repositories, development environment, running services, Shell/process state, Git/Gitea state, or established local workflows. It is especially appropriate for continuing existing local development, research, and automation work and for verifying results against the real machine rather than guessing from chat context. When local operating conventions or reusable procedures may matter and the current context is insufficient, call skills_list with a natural-language description of the task; if a relevant Skill is returned, call skill_read for that Skill before acting. Do not query Skills for ordinary self-contained tasks.";
+
 export type LocalMcpServer = {
   server: Server;
   serveStdio(): Promise<void>;
   close(): Promise<void>;
 };
 
-export function createLocalMcpServer(
+export function createMcpProtocolServer(
   backend: LocalToolBackend,
   ledger?: RequestLedger,
   trace?: FullTrace,
-): LocalMcpServer {
+): Server {
   const server = new Server(
     { name: "chatgpt-web-agent", version: "0.1.0" },
     {
       capabilities: { tools: {} },
-      instructions:
-        "When a task plausibly depends on local tools, services, workflows, or operating conventions and the current context is insufficient, call skills_list with a natural-language description of the task. If a relevant Skill is returned, call skill_read for that Skill before acting. Do not query Skills for ordinary self-contained tasks.",
+      instructions: SERVER_INSTRUCTIONS,
     },
   );
 
@@ -112,6 +114,15 @@ export function createLocalMcpServer(
     }
   });
 
+  return server;
+}
+
+export function createLocalMcpServer(
+  backend: LocalToolBackend,
+  ledger?: RequestLedger,
+  trace?: FullTrace,
+): LocalMcpServer {
+  const server = createMcpProtocolServer(backend, ledger, trace);
   return {
     server,
     serveStdio: async () => {

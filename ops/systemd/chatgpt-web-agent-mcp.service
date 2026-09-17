@@ -1,0 +1,32 @@
+[Unit]
+Description=Persistent Streamable HTTP MCP server for ChatGPT Web Agent
+After=network.target chatgpt-web-agent-exec-runtime.service
+Wants=chatgpt-web-agent-exec-runtime.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/axelhu/.openclaw/workspace-chatgpt-web-agent/projects/chatgpt-web-agent
+Environment=CHATGPT_WEB_AGENT_WORKSPACE=/home/axelhu/.openclaw/workspace-chatgpt-web-agent
+Environment=CHATGPT_WEB_AGENT_WORKSPACE_ONLY=false
+Environment=CHATGPT_WEB_AGENT_GATEWAY_TOKEN_FILE=/home/axelhu/.config/chatgpt-web-agent/gateway-token
+Environment=CHATGPT_WEB_AGENT_DRIVE_ENABLED=true
+Environment=CHATGPT_WEB_AGENT_FEISHU_ENABLED=true
+Environment=CHATGPT_WEB_AGENT_EXEC_SECURITY=full
+Environment=CHATGPT_WEB_AGENT_EXEC_ASK=off
+Environment=CHATGPT_WEB_AGENT_SKILLS_ENABLED=true
+Environment=CHATGPT_WEB_AGENT_SKILLS_QMD_URL=http://192.168.0.96:8182/mcp
+Environment=CHATGPT_WEB_AGENT_MCP_HTTP_LISTEN=127.0.0.1:18790
+Environment=CHATGPT_WEB_AGENT_MCP_HTTP_MODE=stateless
+Environment=HTTP_PROXY=http://127.0.0.1:1080
+Environment=HTTPS_PROXY=http://127.0.0.1:1080
+Environment=NO_PROXY=127.0.0.1,localhost
+ExecStart=/usr/bin/node /home/axelhu/.openclaw/workspace-chatgpt-web-agent/projects/chatgpt-web-agent/dist/http-cli.js
+Restart=always
+RestartSec=2
+KillMode=control-group
+TimeoutStopSec=10
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

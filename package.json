@@ -5,7 +5,8 @@
   "type": "module",
   "bin": {
     "chatgpt-web-agent": "dist/cli.js",
-    "chatgpt-web-agent-exec-runtime": "dist/exec-runtime-cli.js"
+    "chatgpt-web-agent-exec-runtime": "dist/exec-runtime-cli.js",
+    "chatgpt-web-agent-http": "dist/http-cli.js"
   },
   "files": [
     "dist",
@@ -20,7 +21,8 @@
     "test:watch": "vitest",
     "check": "rm -rf dist && pnpm build && pnpm test",
     "smoke": "tsx scripts/mcp-smoke.ts",
-    "drive:auth": "tsx scripts/google-drive-auth.ts"
+    "drive:auth": "tsx scripts/google-drive-auth.ts",
+    "start:http": "node dist/http-cli.js"
   },
   "engines": {
     "node": ">=22.22.3 <23 || >=24.15.0 <25 || >=25.9.0"
