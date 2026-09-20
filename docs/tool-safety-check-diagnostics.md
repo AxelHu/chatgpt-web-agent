@@ -1,5 +1,7 @@
 # 工具安全拦截：分层诊断与实测
 
+> 2026-09-20 新增：近期 `GPT-6/Astra -> GPT-5.4` 路由降级与 external/MCP 工具缺席呈强相关。当前运行时判断与 7/7 fallback 样本汇总见 [Chat 路由降级与自定义工具 profile](chat-route-fallback-tool-profile.md)。该模式与下文“正常模型下的动态 hydration / 安全拦截”分开判断。
+
 ## 2026-09-17：动态工具暴露/绑定的作用域比单 turn 更细
 
 普通 Chat 长回合实测进一步区分出“工具目录/定义可见”和“当前阶段实际可调用绑定”两层。出现过 `list_resources` 已返回 `WebAgentTools.exec`（以及其他 App action）的完整定义，但紧接着 direct invoke 返回 `Resource not found`；该失败没有进入本地 MCP request ledger。下一条用户消息形成新 turn 后，在没有重启 MCP、Tunnel 或修改 App 配置的情况下，同一 `WebAgentTools.exec` 立即恢复成功。

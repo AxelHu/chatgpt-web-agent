@@ -4,6 +4,8 @@
 `chatgpt.com`. It makes persisted model-routing metadata visible while leaving the
 normal ChatGPT UI and request flow intact.
 
+For the current operational interpretation of GPT-6/Astra -> GPT-5.4 fallback together with missing external/MCP tools, see [`chat-route-fallback-tool-profile.md`](chat-route-fallback-tool-profile.md).
+
 It reports the fields that ChatGPT itself persists on assistant nodes:
 
 - `default_model_slug`: the persisted conversation/default target when present;
