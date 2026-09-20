@@ -6,10 +6,20 @@ const source = readFileSync(new URL("../userscripts/chatgpt-route-indicator.user
 const hook = {};
 const context = vm.createContext({
   globalThis: { __CHATGPT_ROUTE_INDICATOR_TEST__: hook },
+  Map,
   Set,
 });
 vm.runInContext(source, context, { filename: "chatgpt-route-indicator.user.js" });
-const { routeFromMetadata, routeKey, mergeRoute, collectRoutes, chooseLatest, sameModel } = hook.exports;
+const {
+  routeFromMetadata,
+  routeKey,
+  mergeRoute,
+  collectRoutes,
+  chooseLatest,
+  routeForIdentity,
+  exceptionalStatus,
+  sameModel,
+} = hook.exports;
 
 assert.equal(sameModel("gpt-6-astra", "gpt-6-pro"), true);
 
@@ -104,10 +114,50 @@ assert.equal(enrichedFromDom.actual, "gpt-5-4-thinking");
 assert.equal(enrichedFromDom.resolved, "gpt-5-4-auto-thinking");
 assert.equal(enrichedFromDom.mismatch, true);
 
+assert.equal(exceptionalStatus({ reasoning_status: "reasoning_cancelled" }), "cancelled");
+assert.equal(exceptionalStatus({ finish_details: { type: "interrupted" } }), "interrupted");
+assert.equal(exceptionalStatus({}, { status: "finished_error" }), "failed");
+
+const interruptedPayload = {
+  mapping: {
+    routed: { message: { id: "route-node", create_time: 30, author: { role: "assistant" }, metadata: {
+      model_slug: "gpt-5-4-thinking", resolved_model_slug: "gpt-5-4-auto-thinking", turn_exchange_id: "interrupted-turn",
+    } } },
+    cancelled: { message: { id: "cancelled-node", create_time: 31, author: { role: "assistant" }, metadata: {
+      reasoning_status: "reasoning_cancelled", turn_exchange_id: "interrupted-turn",
+    } } },
+  },
+};
+const interruptedRoutes = collectRoutes(interruptedPayload);
+assert.equal(interruptedRoutes.length, 2);
+const interruptedMap = new Map(interruptedRoutes.map((route) => [routeKey(route), route]));
+const interrupted = routeForIdentity({
+  messageId: "cancelled-node", turnId: null, modelSlug: null, status: null,
+}, interruptedMap);
+assert.equal(interrupted.actual, "gpt-5-4-thinking");
+assert.equal(interrupted.status, "cancelled");
+assert.equal(interrupted.source, "turn sibling metadata");
+
+const noModelEvidence = routeForIdentity({
+  messageId: "failed-before-route", turnId: "failed-turn", modelSlug: null, status: "interrupted",
+}, new Map());
+assert.equal(noModelEvidence.actual, null);
+assert.equal(noModelEvidence.status, "interrupted");
+assert.equal(noModelEvidence.source, "no model metadata");
+const metadataFreeFailure = collectRoutes({
+  id: "metadata-free-failure",
+  author: { role: "assistant" },
+  status: "finished_error",
+});
+assert.equal(metadataFreeFailure.length, 1);
+assert.equal(metadataFreeFailure[0].status, "failed");
+
 console.log(JSON.stringify({
   ok: true,
   routes: routes.length,
   actual: degraded.actual,
   resolved: degraded.resolved,
   healthy: healthy.actual,
+  interrupted: interrupted.status,
+  unavailable: noModelEvidence.actual,
 }));

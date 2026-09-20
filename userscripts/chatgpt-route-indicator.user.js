@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT Actual Model Route
 // @namespace    https://chatgpt.com/
-// @version      0.3.3
+// @version      0.4.0
 // @description  Show the concrete model recorded on each ChatGPT assistant message without collecting conversation text.
 // @match        https://chatgpt.com/*
 // @run-at       document-start
@@ -41,6 +41,27 @@
     return labels[slug] || slug || "unknown";
   }
 
+  function exceptionalStatus(metadata, fallback = {}) {
+    const finishDetails = metadata && typeof metadata.finish_details === "object"
+      ? metadata.finish_details
+      : null;
+    const candidates = [
+      metadata?.reasoning_status,
+      metadata?.status,
+      finishDetails?.type,
+      finishDetails?.reason,
+      fallback.status,
+    ].filter((value) => typeof value === "string" && value);
+    for (const value of candidates) {
+      const normalized = value.toLowerCase();
+      if (normalized.includes("cancel")) return "cancelled";
+      if (normalized.includes("interrupt") || normalized.includes("abort")) return "interrupted";
+      if (normalized.includes("error") || normalized.includes("fail")) return "failed";
+      if (normalized.includes("unavailable")) return "unavailable";
+    }
+    return null;
+  }
+
   function routeFromMetadata(metadata, fallback = {}) {
     if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
     // model_slug belongs to the generated assistant node. In routed modes it can
@@ -50,7 +71,8 @@
     const resolved = typeof metadata.resolved_model_slug === "string" ? metadata.resolved_model_slug : null;
     const expected = typeof metadata.default_model_slug === "string" ? metadata.default_model_slug : null;
     const requested = typeof metadata.requested_model_slug === "string" ? metadata.requested_model_slug : null;
-    if (!actual && !resolved && !requested && !expected) return null;
+    const status = exceptionalStatus(metadata, fallback);
+    if (!actual && !resolved && !requested && !expected && !status) return null;
     return {
       messageId: fallback.messageId || null,
       turnExchangeId: typeof metadata.turn_exchange_id === "string"
@@ -62,6 +84,7 @@
       requested,
       actual,
       resolved,
+      status,
       source: fallback.source || "metadata",
       mismatch: Boolean(expected && actual && !sameModel(expected, actual)),
       resolutionChanged: Boolean(resolved && actual && !sameModel(resolved, actual)),
@@ -95,6 +118,7 @@
       requested: next.requested || previous.requested || null,
       actual: next.actual || previous.actual || null,
       resolved: next.resolved || previous.resolved || null,
+      status: next.status || previous.status || null,
       source: next.source || previous.source || "metadata",
     };
     merged.mismatch = Boolean(merged.expected && merged.actual && !sameModel(merged.expected, merged.actual));
@@ -116,10 +140,11 @@
 
       const authorRole = node.author && typeof node.author === "object" ? node.author.role : null;
       const metadata = node.metadata && typeof node.metadata === "object" ? node.metadata : null;
-      if (metadata && (authorRole === "assistant" || ROUTE_KEYS.some((key) => typeof metadata[key] === "string"))) {
-        const route = routeFromMetadata(metadata, {
+      if (authorRole === "assistant" || (metadata && ROUTE_KEYS.some((key) => typeof metadata[key] === "string"))) {
+        const route = routeFromMetadata(metadata || {}, {
           messageId: typeof node.id === "string" ? node.id : null,
           createTime: node.create_time,
+          status: typeof node.status === "string" ? node.status : null,
         });
         if (route) routes.push(route);
       }
@@ -159,8 +184,76 @@
     }).at(-1) || null;
   }
 
+  function routeForIdentity(identity, routes) {
+    const values = routes instanceof Map ? [...routes.values()] : [...routes];
+    const get = (key) => key && routes instanceof Map ? routes.get(key) : null;
+    const domRoute = identity.modelSlug ? routeFromMetadata({ model_slug: identity.modelSlug }, {
+      messageId: identity.messageId,
+      turnExchangeId: identity.turnId,
+      source: "dom-message-model",
+      status: identity.status,
+    }) : null;
+    let exact = get(identity.messageId) || get(identity.turnId) || null;
+    let result = exact;
+    if (exact && domRoute) {
+      result = mergeRoute(domRoute, exact);
+      result.source = exact.actual ? exact.source : "metadata + DOM message model";
+    } else if (!result) {
+      result = domRoute;
+    }
+
+    if (result && !result.actual && result.turnExchangeId) {
+      const sibling = values
+        .filter((route) => route !== exact
+          && route.actual
+          && route.turnExchangeId === result.turnExchangeId)
+        .sort((left, right) => (left.createTime || 0) - (right.createTime || 0))
+        .at(-1);
+      if (sibling) {
+        result = mergeRoute(sibling, result);
+        result.source = "turn sibling metadata";
+      }
+    }
+
+    if (!result) {
+      return {
+        messageId: identity.messageId || null,
+        turnExchangeId: identity.turnId || null,
+        requestId: null,
+        createTime: null,
+        expected: null,
+        requested: null,
+        actual: null,
+        resolved: null,
+        status: exceptionalStatus({}, { status: identity.status }) || "unavailable",
+        source: "no model metadata",
+        mismatch: false,
+        resolutionChanged: false,
+        override: false,
+      };
+    }
+    result = {
+      ...result,
+      messageId: identity.messageId || result.messageId || null,
+      turnExchangeId: result.turnExchangeId || identity.turnId || null,
+    };
+    if (!result.actual && !result.status) result.status = "unavailable";
+    return result;
+  }
+
   if (testHook && typeof testHook === "object") {
-    testHook.exports = { canonicalModel, sameModel, modelLabel, routeFromMetadata, routeKey, mergeRoute, collectRoutes, chooseLatest };
+    testHook.exports = {
+      canonicalModel,
+      sameModel,
+      modelLabel,
+      exceptionalStatus,
+      routeFromMetadata,
+      routeKey,
+      mergeRoute,
+      collectRoutes,
+      chooseLatest,
+      routeForIdentity,
+    };
     return;
   }
 
@@ -288,40 +381,18 @@
   }
 
   function assistantIdentity(node) {
-    if (!node) return { messageId: null, turnId: null, modelSlug: null };
+    if (!node) return { messageId: null, turnId: null, modelSlug: null, status: null };
     const turn = node.closest("[data-turn-id], [data-turn-id-container]");
     return {
       messageId: node.dataset.messageId || null,
       turnId: turn?.dataset.turnId || turn?.dataset.turnIdContainer || null,
       modelSlug: node.dataset.messageModelSlug || null,
+      status: node.dataset.messageStatus || node.dataset.status || null,
     };
   }
 
   function routeForAssistant(node) {
-    const identity = assistantIdentity(node);
-    const domRoute = identity.modelSlug ? routeFromMetadata({ model_slug: identity.modelSlug }, {
-      messageId: identity.messageId,
-      turnExchangeId: identity.turnId,
-      source: "dom-message-model",
-    }) : null;
-    if (identity.messageId) {
-      const exact = state.routes.get(identity.messageId);
-      if (exact) {
-        if (!domRoute) return exact;
-        const merged = mergeRoute(domRoute, exact);
-        merged.source = exact.actual ? exact.source : "metadata + DOM message model";
-        return merged;
-      }
-    }
-    if (identity.turnId && domRoute) {
-      const turnMatch = [...state.routes.values()].find((route) => route.turnExchangeId === identity.turnId);
-      if (turnMatch) {
-        const merged = mergeRoute(turnMatch, domRoute);
-        merged.source = "turn metadata + DOM message model";
-        return merged;
-      }
-    }
-    return domRoute;
+    return routeForIdentity(assistantIdentity(node), state.routes);
   }
 
   function focusedAssistant() {
@@ -385,16 +456,20 @@
       }
       if (route.actual) {
         const actual = modelLabel(route.actual);
+        const status = route.status ? ` · ${route.status}` : "";
         const text = route.mismatch && route.expected
-          ? `⚠ actual model: ${modelLabel(route.expected)} → ${actual}`
-          : `actual model: ${actual}`;
-        const color = route.mismatch || route.resolutionChanged ? "#d97706" : "#64748b";
+          ? `⚠ actual model: ${modelLabel(route.expected)} → ${actual}${status}`
+          : `actual model: ${actual}${status}`;
+        const color = route.mismatch || route.resolutionChanged || (route.status && route.status !== "unavailable")
+          ? "#d97706"
+          : "#64748b";
         if (badge.textContent !== text) badge.textContent = text;
         if (badge.style.color !== color) badge.style.color = color;
       } else {
-        const text = `actual model: unknown${route.resolved ? ` · resolved route: ${modelLabel(route.resolved)}` : ""}`;
+        const text = `actual model: unknown${route.resolved ? ` · resolved route: ${modelLabel(route.resolved)}` : ""}${route.status ? ` · ${route.status}` : ""}`;
         if (badge.textContent !== text) badge.textContent = text;
-        if (badge.style.color !== "#64748b") badge.style.color = "#64748b";
+        const color = route.status && route.status !== "unavailable" ? "#d97706" : "#64748b";
+        if (badge.style.color !== color) badge.style.color = color;
       }
     }
   }
@@ -415,13 +490,15 @@
       return;
     }
     const actual = route.actual ? modelLabel(route.actual) : null;
-    const warn = route.mismatch || route.resolutionChanged;
-    pill.className = `pill ${actual ? (warn ? "warn" : "good") : "unknown"}`;
+    const exceptional = route.status && route.status !== "unavailable";
+    const warn = route.mismatch || route.resolutionChanged || exceptional;
+    const status = route.status ? ` · ${route.status}` : "";
+    pill.className = `pill ${warn ? "warn" : actual ? "good" : "unknown"}`;
     pill.textContent = actual
       ? (route.mismatch && route.expected
-        ? `⚠ Actual ${modelLabel(route.expected)} → ${actual}`
-        : `Actual · ${actual}`)
-      : `Actual · unknown${route.resolved ? ` · resolved ${modelLabel(route.resolved)}` : ""}`;
+        ? `⚠ Actual ${modelLabel(route.expected)} → ${actual}${status}`
+        : `Actual · ${actual}${status}`)
+      : `Actual · unknown${route.resolved ? ` · resolved ${modelLabel(route.resolved)}` : ""}${status}`;
     pill.dataset.focusedMessageId = identity.messageId || route.messageId || "";
     const row = (name, value, className = "") => `<div class="row"><span class="muted">${name}</span><span class="${className}">${escapeHtml(value || "—")}</span></div>`;
     detail.innerHTML = [
@@ -429,6 +506,7 @@
       row("requested", modelLabel(route.requested)),
       row("resolved", modelLabel(route.resolved)),
       row("actual", actual || "unknown", warn ? "warnText" : "goodText"),
+      row("status", route.status || "complete"),
       row("message", (identity.messageId || route.messageId) ? `${(identity.messageId || route.messageId).slice(0, 8)}…` : "—"),
       row("turn", route.turnExchangeId ? `${route.turnExchangeId.slice(0, 8)}…` : "—"),
       row("source", route.source === "metadata"
@@ -436,6 +514,7 @@
         : route.source === "dom-message-model" ? "DOM message model" : route.source),
       route.override ? '<div class="warnText" style="margin-top:6px">orchestrator requested a model different from the persisted default</div>' : "",
       route.resolutionChanged ? '<div class="warnText" style="margin-top:6px">resolved route differs from the concrete model on this assistant message</div>' : "",
+      exceptional ? '<div class="warnText" style="margin-top:6px">generation did not complete normally; model is shown only when persisted evidence exists</div>' : "",
       !route.actual ? '<div class="warnText" style="margin-top:6px">actual model is unavailable; the resolved route is not treated as execution proof</div>' : "",
       '<div class="muted" style="margin-top:6px">Local display only · conversation text is neither stored nor transmitted.</div>',
     ].join("");

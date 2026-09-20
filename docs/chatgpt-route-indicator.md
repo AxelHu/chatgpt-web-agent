@@ -33,6 +33,14 @@ because reasoning, summary, and final response nodes in one turn can legitimatel
 carry different `model_slug` values. Clicking the floating badge expands the
 default/requested/resolved/actual fields plus shortened message and turn ids.
 
+Cancelled, interrupted, failed, and model-unavailable assistant responses keep a
+visible label instead of silently disappearing. If another persisted node in the
+same `turn_exchange_id` records a concrete `model_slug`, that model is shown with
+the terminal status (for example, `GPT-5.4 Thinking · cancelled`). If no concrete
+model evidence exists anywhere in the turn, the script explicitly shows
+`Actual · unknown · interrupted` or `Actual · unknown · unavailable`; it never
+promotes requested/resolved routing values to actual execution evidence.
+
 Tampermonkey installation on Firefox/Chromium is preferred here because it avoids
 changing Firefox unsigned-extension security policy. The userscript must be
 installed/updated by the browser user; repository presence alone does not activate
