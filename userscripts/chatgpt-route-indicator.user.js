@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         ChatGPT Actual Model Route
 // @namespace    https://chatgpt.com/
-// @version      0.1.0
-// @description  Show the persisted default/requested/resolved Chat model route without collecting conversation text.
+// @version      0.3.3
+// @description  Show the concrete model recorded on each ChatGPT assistant message without collecting conversation text.
 // @match        https://chatgpt.com/*
 // @run-at       document-start
 // @grant        none
@@ -43,13 +43,14 @@
 
   function routeFromMetadata(metadata, fallback = {}) {
     if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
-    const rawModel = typeof metadata.model_slug === "string" ? metadata.model_slug : null;
-    const resolved = typeof metadata.resolved_model_slug === "string"
-      ? metadata.resolved_model_slug
-      : rawModel;
-    if (!resolved) return null;
+    // model_slug belongs to the generated assistant node. In routed modes it can
+    // intentionally differ from requested_model_slug/resolved_model_slug; that
+    // concrete node value is the best persisted evidence of the executing model.
+    const actual = typeof metadata.model_slug === "string" ? metadata.model_slug : null;
+    const resolved = typeof metadata.resolved_model_slug === "string" ? metadata.resolved_model_slug : null;
     const expected = typeof metadata.default_model_slug === "string" ? metadata.default_model_slug : null;
     const requested = typeof metadata.requested_model_slug === "string" ? metadata.requested_model_slug : null;
+    if (!actual && !resolved && !requested && !expected) return null;
     return {
       messageId: fallback.messageId || null,
       turnExchangeId: typeof metadata.turn_exchange_id === "string"
@@ -59,18 +60,24 @@
       createTime: Number.isFinite(Number(fallback.createTime)) ? Number(fallback.createTime) : null,
       expected,
       requested,
-      rawModel,
+      actual,
       resolved,
-      mismatch: Boolean(expected && !sameModel(expected, resolved)),
+      source: fallback.source || "metadata",
+      mismatch: Boolean(expected && actual && !sameModel(expected, actual)),
+      resolutionChanged: Boolean(resolved && actual && !sameModel(resolved, actual)),
       override: Boolean(expected && requested && !sameModel(expected, requested)),
     };
   }
 
   function routeKey(route) {
-    return route.turnExchangeId || route.messageId || route.requestId || [
+    // One turn can contain reasoning, summary and final response nodes carrying
+    // different model_slug values. Keep message identity before turn identity so
+    // the final visible response cannot be overwritten by another phase.
+    return route.messageId || route.turnExchangeId || route.requestId || [
       route.createTime || "",
       route.expected || "",
       route.requested || "",
+      route.actual || "",
       route.resolved || "",
     ].join("|");
   }
@@ -86,10 +93,12 @@
       createTime: Math.max(previous.createTime || 0, next.createTime || 0) || null,
       expected: next.expected || previous.expected || null,
       requested: next.requested || previous.requested || null,
-      rawModel: next.rawModel || previous.rawModel || null,
+      actual: next.actual || previous.actual || null,
       resolved: next.resolved || previous.resolved || null,
+      source: next.source || previous.source || "metadata",
     };
-    merged.mismatch = Boolean(merged.expected && merged.resolved && !sameModel(merged.expected, merged.resolved));
+    merged.mismatch = Boolean(merged.expected && merged.actual && !sameModel(merged.expected, merged.actual));
+    merged.resolutionChanged = Boolean(merged.resolved && merged.actual && !sameModel(merged.resolved, merged.actual));
     merged.override = Boolean(merged.expected && merged.requested && !sameModel(merged.expected, merged.requested));
     return merged;
   }
@@ -135,10 +144,11 @@
         byTurn.set(key, route);
         continue;
       }
-      // Prefer richer persisted metadata, especially resolved/default fields.
+      // Prefer richer persisted metadata for repeated observations of one node.
       const score = (item) => Number(Boolean(item.expected)) * 4
         + Number(Boolean(item.requested)) * 2
-        + Number(Boolean(item.resolved)) * 4
+        + Number(Boolean(item.resolved)) * 2
+        + Number(Boolean(item.actual)) * 8
         + Number(Boolean(item.messageId));
       byTurn.set(key, score(route) >= score(previous) ? mergeRoute(previous, route) : mergeRoute(route, previous));
     }
@@ -150,7 +160,7 @@
   }
 
   if (testHook && typeof testHook === "object") {
-    testHook.exports = { canonicalModel, sameModel, modelLabel, routeFromMetadata, collectRoutes, chooseLatest };
+    testHook.exports = { canonicalModel, sameModel, modelLabel, routeFromMetadata, routeKey, mergeRoute, collectRoutes, chooseLatest };
     return;
   }
 
@@ -277,6 +287,65 @@
     state.fallbackTimer = setTimeout(() => void fetchConversationFallback(), delay);
   }
 
+  function assistantIdentity(node) {
+    if (!node) return { messageId: null, turnId: null, modelSlug: null };
+    const turn = node.closest("[data-turn-id], [data-turn-id-container]");
+    return {
+      messageId: node.dataset.messageId || null,
+      turnId: turn?.dataset.turnId || turn?.dataset.turnIdContainer || null,
+      modelSlug: node.dataset.messageModelSlug || null,
+    };
+  }
+
+  function routeForAssistant(node) {
+    const identity = assistantIdentity(node);
+    const domRoute = identity.modelSlug ? routeFromMetadata({ model_slug: identity.modelSlug }, {
+      messageId: identity.messageId,
+      turnExchangeId: identity.turnId,
+      source: "dom-message-model",
+    }) : null;
+    if (identity.messageId) {
+      const exact = state.routes.get(identity.messageId);
+      if (exact) {
+        if (!domRoute) return exact;
+        const merged = mergeRoute(domRoute, exact);
+        merged.source = exact.actual ? exact.source : "metadata + DOM message model";
+        return merged;
+      }
+    }
+    if (identity.turnId && domRoute) {
+      const turnMatch = [...state.routes.values()].find((route) => route.turnExchangeId === identity.turnId);
+      if (turnMatch) {
+        const merged = mergeRoute(turnMatch, domRoute);
+        merged.source = "turn metadata + DOM message model";
+        return merged;
+      }
+    }
+    return domRoute;
+  }
+
+  function focusedAssistant() {
+    const assistants = [...document.querySelectorAll('[data-message-author-role="assistant"]')];
+    if (!assistants.length) return null;
+    const viewportHeight = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+    const viewportCenter = viewportHeight / 2;
+    let best = null;
+    let bestScore = Number.NEGATIVE_INFINITY;
+    for (const node of assistants) {
+      const rect = node.getBoundingClientRect();
+      const visibleHeight = Math.max(0, Math.min(rect.bottom, viewportHeight) - Math.max(rect.top, 0));
+      if (visibleHeight <= 0) continue;
+      const visibleRatio = visibleHeight / Math.max(1, Math.min(rect.height || visibleHeight, viewportHeight));
+      const center = Math.max(0, Math.min(viewportHeight, (rect.top + rect.bottom) / 2));
+      const score = visibleRatio * 10000 - Math.abs(center - viewportCenter);
+      if (score > bestScore) {
+        best = node;
+        bestScore = score;
+      }
+    }
+    return best || assistants.at(-1) || null;
+  }
+
   function ensurePanel() {
     let host = document.getElementById("chatgpt-route-indicator-host");
     if (host) return host.shadowRoot;
@@ -292,58 +361,84 @@
         .detail{pointer-events:auto;display:none;margin-top:8px;width:min(390px,calc(100vw - 36px));padding:11px 12px;border:1px solid rgba(148,163,184,.3);border-radius:14px;background:rgba(15,23,42,.96);color:#e2e8f0;box-shadow:0 10px 30px rgba(15,23,42,.28);font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace}
         .detail.open{display:block}.row{display:grid;grid-template-columns:82px 1fr;gap:8px}.muted{color:#94a3b8}.warnText{color:#fbbf24}.goodText{color:#6ee7b7}
       </style>
-      <button type="button" class="pill unknown" id="pill" title="Click for persisted model route metadata">Route · waiting for metadata</button>
+      <button type="button" class="pill unknown" id="pill" title="Click for persisted model route metadata">Model · waiting for metadata</button>
       <div class="detail" id="detail" role="status" aria-live="polite"></div>`;
     shadow.getElementById("pill").addEventListener("click", () => shadow.getElementById("detail").classList.toggle("open"));
     (document.documentElement || document).appendChild(host);
     return shadow;
   }
 
-  function renderInline(route) {
+  function renderInline() {
     const assistants = document.querySelectorAll('[data-message-author-role="assistant"]');
-    const target = assistants[assistants.length - 1];
-    if (!target) return;
-    let badge = target.querySelector(":scope > [data-chatgpt-actual-route]");
-    if (!badge) {
-      badge = document.createElement("div");
-      badge.dataset.chatgptActualRoute = "true";
-      badge.style.cssText = "margin:6px 0 2px;font:11px/1.4 ui-sans-serif,system-ui;color:#64748b";
-      target.appendChild(badge);
+    for (const target of assistants) {
+      const route = routeForAssistant(target);
+      let badge = target.querySelector(":scope > [data-chatgpt-actual-route]");
+      if (!route) {
+        if (badge) badge.remove();
+        continue;
+      }
+      if (!badge) {
+        badge = document.createElement("div");
+        badge.dataset.chatgptActualRoute = "true";
+        badge.style.cssText = "margin:6px 0 2px;font:11px/1.4 ui-sans-serif,system-ui;color:#64748b";
+        target.appendChild(badge);
+      }
+      if (route.actual) {
+        const actual = modelLabel(route.actual);
+        const text = route.mismatch && route.expected
+          ? `⚠ actual model: ${modelLabel(route.expected)} → ${actual}`
+          : `actual model: ${actual}`;
+        const color = route.mismatch || route.resolutionChanged ? "#d97706" : "#64748b";
+        if (badge.textContent !== text) badge.textContent = text;
+        if (badge.style.color !== color) badge.style.color = color;
+      } else {
+        const text = `actual model: unknown${route.resolved ? ` · resolved route: ${modelLabel(route.resolved)}` : ""}`;
+        if (badge.textContent !== text) badge.textContent = text;
+        if (badge.style.color !== "#64748b") badge.style.color = "#64748b";
+      }
     }
-    const actual = modelLabel(route.resolved);
-    badge.textContent = route.mismatch && route.expected
-      ? `⚠ actual route: ${modelLabel(route.expected)} → ${actual}`
-      : `actual route: ${actual}`;
-    badge.style.color = route.mismatch ? "#d97706" : "#64748b";
   }
 
   function render() {
     const shadow = ensurePanel();
     const pill = shadow.getElementById("pill");
     const detail = shadow.getElementById("detail");
-    const route = state.latest;
+    renderInline();
+    const target = focusedAssistant();
+    const identity = assistantIdentity(target);
+    const route = target ? routeForAssistant(target) : state.latest;
     if (!route) {
       pill.className = "pill unknown";
-      pill.textContent = "Route · waiting for metadata";
-      detail.innerHTML = '<div class="muted">No persisted assistant route metadata observed yet.</div>';
+      pill.textContent = "Actual · unknown";
+      pill.dataset.focusedMessageId = identity.messageId || "";
+      detail.innerHTML = '<div class="muted">No model metadata is available for the focused assistant response.</div>';
       return;
     }
-    const actual = modelLabel(route.resolved);
-    pill.className = `pill ${route.mismatch ? "warn" : "good"}`;
-    pill.textContent = route.mismatch && route.expected
-      ? `⚠ Route ${modelLabel(route.expected)} → ${actual}`
-      : `Actual · ${actual}`;
+    const actual = route.actual ? modelLabel(route.actual) : null;
+    const warn = route.mismatch || route.resolutionChanged;
+    pill.className = `pill ${actual ? (warn ? "warn" : "good") : "unknown"}`;
+    pill.textContent = actual
+      ? (route.mismatch && route.expected
+        ? `⚠ Actual ${modelLabel(route.expected)} → ${actual}`
+        : `Actual · ${actual}`)
+      : `Actual · unknown${route.resolved ? ` · resolved ${modelLabel(route.resolved)}` : ""}`;
+    pill.dataset.focusedMessageId = identity.messageId || route.messageId || "";
     const row = (name, value, className = "") => `<div class="row"><span class="muted">${name}</span><span class="${className}">${escapeHtml(value || "—")}</span></div>`;
     detail.innerHTML = [
       row("default", modelLabel(route.expected), route.mismatch ? "warnText" : "goodText"),
       row("requested", modelLabel(route.requested)),
-      row("resolved", actual, route.mismatch ? "warnText" : "goodText"),
-      row("raw", modelLabel(route.rawModel)),
+      row("resolved", modelLabel(route.resolved)),
+      row("actual", actual || "unknown", warn ? "warnText" : "goodText"),
+      row("message", (identity.messageId || route.messageId) ? `${(identity.messageId || route.messageId).slice(0, 8)}…` : "—"),
       row("turn", route.turnExchangeId ? `${route.turnExchangeId.slice(0, 8)}…` : "—"),
+      row("source", route.source === "metadata"
+        ? "assistant metadata"
+        : route.source === "dom-message-model" ? "DOM message model" : route.source),
       route.override ? '<div class="warnText" style="margin-top:6px">orchestrator requested a model different from the persisted default</div>' : "",
+      route.resolutionChanged ? '<div class="warnText" style="margin-top:6px">resolved route differs from the concrete model on this assistant message</div>' : "",
+      !route.actual ? '<div class="warnText" style="margin-top:6px">actual model is unavailable; the resolved route is not treated as execution proof</div>' : "",
       '<div class="muted" style="margin-top:6px">Local display only · conversation text is neither stored nor transmitted.</div>',
     ].join("");
-    renderInline(route);
   }
 
   function escapeHtml(value) {
@@ -357,6 +452,7 @@
 
   function observePage() {
     ensurePanel();
+    scheduleRender();
     scheduleFallback(350);
     let lastUrl = location.href;
     let lastAssistantCount = 0;
@@ -375,12 +471,16 @@
         scheduleFallback(250);
       } else if (count !== lastAssistantCount) {
         lastAssistantCount = count;
+        scheduleRender();
         scheduleFallback(900);
       } else {
+        scheduleRender();
         scheduleFallback(1500);
       }
     });
     observer.observe(document.documentElement, { subtree: true, childList: true });
+    document.addEventListener("scroll", scheduleRender, { passive: true, capture: true });
+    window.addEventListener("resize", scheduleRender, { passive: true });
     window.addEventListener("popstate", () => scheduleFallback(250), { passive: true });
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) scheduleFallback(350);

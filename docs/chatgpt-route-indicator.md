@@ -8,25 +8,30 @@ It reports the fields that ChatGPT itself persists on assistant nodes:
 
 - `default_model_slug`: the persisted conversation/default target when present;
 - `requested_model_slug`: the model requested by orchestration for that turn/node;
-- `resolved_model_slug`: the effective resolved route, falling back to
-  `model_slug` only when the resolved field is absent;
-- `model_slug`: the raw node label, retained only for diagnostics.
+- `resolved_model_slug`: the route selected by orchestration;
+- `model_slug`: the concrete model recorded on that generated assistant node and
+  therefore the value displayed as **actual**.
 
-A warning is shown only when an explicit persisted default and effective resolved
-route differ after the small known GPT-6 Pro/Astra alias normalization. Unknown
-model names are never capability-ranked. A raw `gpt-5-4-thinking` node whose
-`resolved_model_slug` is `gpt-5-4-auto-thinking` is therefore displayed as one
-resolved 5.4 Auto route, not as a second model switch.
+A warning is shown when an explicit persisted default and concrete message model
+differ after the small known GPT-6 Pro/Astra alias normalization. A separate note
+is shown when the resolved route and concrete model differ. For example, a final
+assistant node with `resolved_model_slug: gpt-5-4-auto-thinking` and
+`model_slug: gpt-5-4-thinking` is displayed as actual **GPT-5.4 Thinking**, while
+the Auto value remains visible in the resolved row. Resolved/requested values are
+never relabeled as actual when `model_slug` is absent.
 
 The script observes cloned same-origin ChatGPT conversation/SSE responses and has a
 debounced same-origin conversation-GET fallback after navigation or assistant UI
 changes. It never sends data to another origin. It stores only route metadata in
 memory for the current tab and does not retain prompt/response text.
 
-The floating badge shows the latest observed route. When ChatGPT exposes the usual
-`data-message-author-role="assistant"` DOM marker, a small route label is also added
-to the latest visible assistant response. Clicking the floating badge expands the
-default/requested/resolved/raw fields and a shortened turn id.
+The floating badge follows the assistant response with the strongest visibility in
+the viewport, so it changes while scrolling between turns. When ChatGPT exposes the
+usual `data-message-author-role="assistant"` DOM marker, each response receives its
+own small actual-model label. Message identity is retained before turn identity
+because reasoning, summary, and final response nodes in one turn can legitimately
+carry different `model_slug` values. Clicking the floating badge expands the
+default/requested/resolved/actual fields plus shortened message and turn ids.
 
 Tampermonkey installation on Firefox/Chromium is preferred here because it avoids
 changing Firefox unsigned-extension security policy. The userscript must be

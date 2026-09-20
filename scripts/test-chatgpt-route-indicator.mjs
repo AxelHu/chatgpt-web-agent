@@ -9,7 +9,7 @@ const context = vm.createContext({
   Set,
 });
 vm.runInContext(source, context, { filename: "chatgpt-route-indicator.user.js" });
-const { routeFromMetadata, collectRoutes, chooseLatest, sameModel } = hook.exports;
+const { routeFromMetadata, routeKey, mergeRoute, collectRoutes, chooseLatest, sameModel } = hook.exports;
 
 assert.equal(sameModel("gpt-6-astra", "gpt-6-pro"), true);
 
@@ -22,7 +22,9 @@ const degraded = routeFromMetadata({
 });
 assert.equal(degraded.mismatch, true);
 assert.equal(degraded.override, true);
+assert.equal(degraded.actual, "gpt-5-4-thinking");
 assert.equal(degraded.resolved, "gpt-5-4-auto-thinking");
+assert.equal(degraded.resolutionChanged, true);
 
 const healthy = routeFromMetadata({
   default_model_slug: "gpt-6-astra",
@@ -31,6 +33,7 @@ const healthy = routeFromMetadata({
   turn_exchange_id: "healthy-turn",
 });
 assert.equal(healthy.mismatch, false);
+assert.equal(healthy.actual, "gpt-6-pro");
 
 const payload = {
   mapping: {
@@ -47,6 +50,23 @@ const routes = collectRoutes(payload);
 assert.equal(routes.length, 2);
 assert.equal(chooseLatest(routes).turnExchangeId, "two");
 assert.equal(chooseLatest(routes).mismatch, true);
+assert.equal(routeKey(routes[0]), "m1");
+assert.equal(routeKey(routes[1]), "m2");
+
+// Distinct assistant nodes in one turn must retain their concrete model. A
+// reasoning/summary node can carry the routed alias while the final visible
+// answer carries the actually executing model slug.
+const sameTurnNodes = collectRoutes({ mapping: {
+  reasoning: { message: { id: "reasoning-node", create_time: 20, author: { role: "assistant" }, metadata: {
+    model_slug: "gpt-5-4-auto-thinking", resolved_model_slug: "gpt-5-4-auto-thinking", turn_exchange_id: "shared-turn",
+  } } },
+  final: { message: { id: "final-node", create_time: 21, author: { role: "assistant" }, metadata: {
+    default_model_slug: "gpt-6-pro", requested_model_slug: "gpt-5-4-auto-thinking",
+    model_slug: "gpt-5-4-thinking", resolved_model_slug: "gpt-5-4-auto-thinking", turn_exchange_id: "shared-turn",
+  } } },
+} });
+assert.equal(sameTurnNodes.length, 2);
+assert.equal(new Map(sameTurnNodes.map((route) => [routeKey(route), route])).get("final-node").actual, "gpt-5-4-thinking");
 
 const partialSameTurn = chooseLatest([
   routeFromMetadata({
@@ -66,4 +86,28 @@ assert.equal(partialSameTurn.expected, "gpt-6-pro");
 assert.equal(partialSameTurn.requested, "gpt-5-4-auto-thinking");
 assert.equal(partialSameTurn.mismatch, true);
 
-console.log(JSON.stringify({ ok: true, routes: routes.length, degraded: degraded.resolved, healthy: healthy.resolved }));
+const resolvedOnly = routeFromMetadata({
+  default_model_slug: "gpt-6-pro",
+  resolved_model_slug: "gpt-5-4-auto-thinking",
+});
+assert.equal(resolvedOnly.actual, null);
+assert.equal(resolvedOnly.mismatch, false);
+const enrichedFromDom = mergeRoute(
+  routeFromMetadata({ model_slug: "gpt-5-4-thinking" }, { messageId: "dom-node", source: "dom-message-model" }),
+  routeFromMetadata({
+    default_model_slug: "gpt-6-pro",
+    requested_model_slug: "gpt-5-4-auto-thinking",
+    resolved_model_slug: "gpt-5-4-auto-thinking",
+  }, { messageId: "dom-node" }),
+);
+assert.equal(enrichedFromDom.actual, "gpt-5-4-thinking");
+assert.equal(enrichedFromDom.resolved, "gpt-5-4-auto-thinking");
+assert.equal(enrichedFromDom.mismatch, true);
+
+console.log(JSON.stringify({
+  ok: true,
+  routes: routes.length,
+  actual: degraded.actual,
+  resolved: degraded.resolved,
+  healthy: healthy.actual,
+}));
