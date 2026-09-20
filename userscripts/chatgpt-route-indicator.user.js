@@ -75,6 +75,25 @@
     ].join("|");
   }
 
+  function mergeRoute(previous, next) {
+    if (!previous) return next;
+    const merged = {
+      ...previous,
+      ...next,
+      messageId: next.messageId || previous.messageId || null,
+      turnExchangeId: next.turnExchangeId || previous.turnExchangeId || null,
+      requestId: next.requestId || previous.requestId || null,
+      createTime: Math.max(previous.createTime || 0, next.createTime || 0) || null,
+      expected: next.expected || previous.expected || null,
+      requested: next.requested || previous.requested || null,
+      rawModel: next.rawModel || previous.rawModel || null,
+      resolved: next.resolved || previous.resolved || null,
+    };
+    merged.mismatch = Boolean(merged.expected && merged.resolved && !sameModel(merged.expected, merged.resolved));
+    merged.override = Boolean(merged.expected && merged.requested && !sameModel(merged.expected, merged.requested));
+    return merged;
+  }
+
   function collectRoutes(value) {
     const routes = [];
     const seen = new Set();
@@ -121,7 +140,7 @@
         + Number(Boolean(item.requested)) * 2
         + Number(Boolean(item.resolved)) * 4
         + Number(Boolean(item.messageId));
-      byTurn.set(key, score(route) >= score(previous) ? { ...previous, ...route } : { ...route, ...previous });
+      byTurn.set(key, score(route) >= score(previous) ? mergeRoute(previous, route) : mergeRoute(route, previous));
     }
     return [...byTurn.values()].sort((a, b) => {
       const ta = a.createTime || 0;
@@ -149,7 +168,7 @@
     for (const route of routes) {
       const key = routeKey(route);
       const previous = state.routes.get(key);
-      const next = previous ? { ...previous, ...route } : route;
+      const next = mergeRoute(previous, route);
       if (!previous || JSON.stringify(previous) !== JSON.stringify(next)) changed = true;
       state.routes.set(key, next);
     }

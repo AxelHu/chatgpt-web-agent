@@ -48,4 +48,22 @@ assert.equal(routes.length, 2);
 assert.equal(chooseLatest(routes).turnExchangeId, "two");
 assert.equal(chooseLatest(routes).mismatch, true);
 
+const partialSameTurn = chooseLatest([
+  routeFromMetadata({
+    default_model_slug: "gpt-6-pro",
+    requested_model_slug: "gpt-5-4-auto-thinking",
+    model_slug: "gpt-5-4-thinking",
+    resolved_model_slug: "gpt-5-4-auto-thinking",
+    turn_exchange_id: "partial-turn",
+  }, { createTime: 10 }),
+  routeFromMetadata({
+    model_slug: "gpt-5-4-auto-thinking",
+    resolved_model_slug: "gpt-5-4-auto-thinking",
+    turn_exchange_id: "partial-turn",
+  }, { createTime: 11 }),
+]);
+assert.equal(partialSameTurn.expected, "gpt-6-pro");
+assert.equal(partialSameTurn.requested, "gpt-5-4-auto-thinking");
+assert.equal(partialSameTurn.mismatch, true);
+
 console.log(JSON.stringify({ ok: true, routes: routes.length, degraded: degraded.resolved, healthy: healthy.resolved }));
