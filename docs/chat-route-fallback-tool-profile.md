@@ -38,6 +38,30 @@
 
 > 上游编排器在某些 degraded/fallback 状态下，同时选择 GPT-5.4 fallback route，并给该执行一个更窄的 external/MCP capability profile；或者 external-tool hydration 先失败，随后编排器选择 text-only 的 GPT-5.4 fallback。现有持久化数据还不能确定这两种因果方向中的哪一个正确。
 
+## 2026-09-21 新反例：工具 profile 异常也可发生在仍标记为 GPT-6/Astra 的回合
+
+会话 `6aa79d0a-4bb8-83e8-bd6b-3663dc85d1f5`（「继续开发像素城堡」）给出了一个重要反例，说明“external/MCP 工具消失”并不要求模型同时 fallback 到 GPT-5.4。
+
+公开 share `6ab085ae-15d4-83e8-93fc-95754395433e` 的 conversation-level `default_model_slug` 仍为 `gpt-6-pro`，`disabled_tool_ids=[]`。账户侧持久化 current branch 中，最后三个异常 user turn 分别发生在 2026-09-21 09:14、09:15、09:17（Asia/Shanghai）：
+
+- 三个回合的 `expected_model_slug` / effective persisted model 都是 `gpt-6-pro`；
+- `requested_model_slug` 没有出现 GPT-5.4 override；
+- `route_mismatch=false`，`route_override=false`；
+- 三个回合全部 `tool_calls=0`；
+- 没有完整 reasoning duration，回复分别在约 1.94 s、2.36 s、3.30 s 内直接给出纯文本；
+- 回复自身明确承认“没有拿到可用的本地执行链路 / WebAgentTools”，并停止实际开发。
+
+作为对照，同一会话此前 2026-09-20 22:21 的正常 GPT-6/Astra 长回合有 33 个 persisted tool calls；之后存在一个 `reasoning_cancelled` 节点（2026-09-21 01:44），再到早晨连续三个 text-only GPT-6 回合。没有证据表明中间发生了本地 Tunnel/MCP 修复或配置变化。
+
+因此当前诊断应明确区分两种现象：
+
+1. **route fallback + restricted external-tool profile**：此前 7/7 明确 GPT-6 -> GPT-5.4 fallback 都是 0 persisted tool calls，且多次伴随 WebAgentTools 缺席；
+2. **GPT-6/Astra label retained + restricted external-tool profile**：模型持久化标签仍为 GPT-6 Pro，但回合退化成极短 text-only 执行，工具没有实际挂载/调用。
+
+这意味着“fallback -> 工具缺席”的相关性仍成立于现有样本，但反方向绝对不能写成“工具缺席 -> 一定 fallback”。遇到 badge 仍显示 GPT-6/Astra、但连续回合无法实际调用工具时，应归入**动态 tool hydration/binding / degraded execution profile**排查，而不是把插件判为错误或强行认定后台已换成 5.4。
+
+一个待观察但未证实的附加线索是：本例在长回合 `reasoning_cancelled` 后出现持续 text-only GPT-6 回合。暂时不要把 cancellation 写成因果，只记录为时间相关。
+
 ## 重要限定
 
 - **不是“5.4 一定没有任何工具”。** 历史 5.4 回合里见过 built-in container / image-generation 一类能力。当前强相关的是 `WebAgentTools`、本地执行和其他 external/MCP 高权限工具链的缺席或收窄。
