@@ -15,7 +15,9 @@ It reports the fields that ChatGPT itself persists on assistant nodes:
   therefore the value displayed as **actual**.
 
 A warning is shown when an explicit persisted default and concrete message model
-differ after the small known GPT-6 Pro/Astra alias normalization. A separate note
+differ after the small known GPT-6 Pro/Astra alias normalization. GPT-6 Sol and
+GPT-6 Luna are intentionally treated as distinct concrete models, not aliases of
+GPT-6 Pro/Astra. A separate note
 is shown when the resolved route and concrete model differ. For example, a final
 assistant node with `resolved_model_slug: gpt-5-4-auto-thinking` and
 `model_slug: gpt-5-4-thinking` is displayed as actual **GPT-5.4 Thinking**, while

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT Actual Model Route
 // @namespace    https://chatgpt.com/
-// @version      0.4.0
+// @version      0.5.0
 // @description  Show the concrete model recorded on each ChatGPT assistant message without collecting conversation text.
 // @match        https://chatgpt.com/*
 // @run-at       document-start
@@ -32,6 +32,8 @@
       "gpt-6-pro": "GPT-6 Pro / Astra",
       "gpt-6-astra": "GPT-6 Pro / Astra",
       "gpt-6-astra-pro": "GPT-6 Pro / Astra",
+      "gpt-6-sol": "GPT-6 Sol",
+      "gpt-6-luna": "GPT-6 Luna",
       "gpt-5-4-auto-thinking": "GPT-5.4 Auto",
       "gpt-5-4-thinking": "GPT-5.4 Thinking",
       "gpt-5-6-thinking": "GPT-5.6 Thinking",

@@ -19,9 +19,36 @@ const {
   routeForIdentity,
   exceptionalStatus,
   sameModel,
+  modelLabel,
 } = hook.exports;
 
 assert.equal(sameModel("gpt-6-astra", "gpt-6-pro"), true);
+assert.equal(sameModel("gpt-6-sol", "gpt-6-pro"), false);
+assert.equal(sameModel("gpt-6-luna", "gpt-6-pro"), false);
+assert.equal(modelLabel("gpt-6-sol"), "GPT-6 Sol");
+assert.equal(modelLabel("gpt-6-luna"), "GPT-6 Luna");
+
+const solReroute = routeFromMetadata({
+  default_model_slug: "gpt-6-pro",
+  requested_model_slug: "gpt-6-pro",
+  model_slug: "gpt-6-sol",
+  resolved_model_slug: "gpt-6-sol",
+  turn_exchange_id: "sol-reroute",
+});
+assert.equal(solReroute.actual, "gpt-6-sol");
+assert.equal(solReroute.mismatch, true);
+assert.equal(solReroute.resolutionChanged, false);
+
+const lunaReroute = routeFromMetadata({
+  default_model_slug: "gpt-6-pro",
+  requested_model_slug: "gpt-6-pro",
+  model_slug: "gpt-6-luna",
+  resolved_model_slug: "gpt-6-luna",
+  turn_exchange_id: "luna-reroute",
+});
+assert.equal(lunaReroute.actual, "gpt-6-luna");
+assert.equal(lunaReroute.mismatch, true);
+assert.equal(lunaReroute.resolutionChanged, false);
 
 const degraded = routeFromMetadata({
   default_model_slug: "gpt-6-pro",
