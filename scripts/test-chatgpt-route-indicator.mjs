@@ -21,6 +21,7 @@ const {
   sameModel,
   modelLabel,
   executionConcern,
+  finiteTimestamp,
 } = hook.exports;
 
 assert.equal(sameModel("gpt-6-astra", "gpt-6-pro"), true);
@@ -28,6 +29,19 @@ assert.equal(sameModel("gpt-6-sol", "gpt-6-pro"), false);
 assert.equal(sameModel("gpt-6-luna", "gpt-6-pro"), false);
 assert.equal(modelLabel("gpt-6-sol"), "GPT-6 Sol");
 assert.equal(modelLabel("gpt-6-luna"), "GPT-6 Luna");
+assert.equal(finiteTimestamp(null), false);
+assert.equal(finiteTimestamp(undefined), false);
+assert.equal(finiteTimestamp(""), false);
+assert.equal(finiteTimestamp(0), true);
+
+const nullReasoningTimes = routeFromMetadata({
+  model_slug: "gpt-6-pro",
+  thinking_effort: "standard",
+  reasoning_start_time: null,
+  reasoning_end_time: null,
+  turn_exchange_id: "null-reasoning-times",
+});
+assert.equal(nullReasoningTimes.reasoningObserved, false);
 
 const solReroute = routeFromMetadata({
   default_model_slug: "gpt-6-pro",
@@ -138,6 +152,40 @@ const healthyFinal = routeForIdentity({
 assert.equal(healthyFinal.turnReasoningObserved, true);
 assert.equal(healthyFinal.turnResolvedObserved, true);
 assert.equal(executionConcern(healthyFinal), null);
+
+// Tool execution is valid turn-level evidence even when the tool node itself
+// carries no concrete model slug.
+const toolBackedRoutes = collectRoutes({ mapping: {
+  final: { message: {
+    id: "tool-backed-final",
+    create_time: 50,
+    author: { role: "assistant" },
+    content: { content_type: "text", parts: ["done"] },
+    recipient: "all",
+    metadata: {
+      model_slug: "gpt-6-pro",
+      thinking_effort: "standard",
+      turn_exchange_id: "tool-backed-turn",
+    },
+  } },
+  tool: { message: {
+    id: "tool-backed-node",
+    create_time: 49,
+    author: { role: "tool" },
+    content: { content_type: "text", parts: [] },
+    recipient: "all",
+    metadata: { turn_exchange_id: "tool-backed-turn" },
+  } },
+} });
+const toolBackedMap = new Map(toolBackedRoutes.map((route) => [routeKey(route), route]));
+const toolBackedFinal = routeForIdentity({
+  messageId: "tool-backed-final",
+  turnId: "tool-backed-turn",
+  modelSlug: "gpt-6-pro",
+  status: "finished_successfully",
+}, toolBackedMap);
+assert.equal(toolBackedFinal.turnToolObserved, true);
+assert.equal(executionConcern(toolBackedFinal), null);
 
 const payload = {
   mapping: {

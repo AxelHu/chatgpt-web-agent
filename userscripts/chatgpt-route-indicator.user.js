@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT Actual Model Route
 // @namespace    https://chatgpt.com/
-// @version      0.6.0
+// @version      0.6.1
 // @description  Show the concrete model recorded on each ChatGPT assistant message without collecting conversation text.
 // @match        https://chatgpt.com/*
 // @run-at       document-start
@@ -64,6 +64,10 @@
     return null;
   }
 
+  function finiteTimestamp(value) {
+    return value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
+  }
+
   function routeFromMetadata(metadata, fallback = {}) {
     if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
     // model_slug belongs to the generated assistant node. In routed modes it can
@@ -86,8 +90,8 @@
       reasoningStatus
       || contentType === "thoughts"
       || contentType === "reasoning_recap"
-      || Number.isFinite(Number(metadata.reasoning_start_time))
-      || Number.isFinite(Number(metadata.reasoning_end_time))
+      || finiteTimestamp(metadata.reasoning_start_time)
+      || finiteTimestamp(metadata.reasoning_end_time)
     );
     const toolObserved = Boolean(
       authorRole === "tool"
@@ -97,7 +101,8 @@
         && recipient !== "web")
     );
     const status = exceptionalStatus(metadata, fallback);
-    if (!actual && !resolved && !requested && !expected && !status) return null;
+    if (!actual && !resolved && !requested && !expected && !status
+      && !thinkingEffort && !reasoningObserved && !toolObserved) return null;
     return {
       messageId: fallback.messageId || null,
       turnExchangeId: typeof metadata.turn_exchange_id === "string"
@@ -176,7 +181,8 @@
       const contentType = node.content && typeof node.content === "object" && typeof node.content.content_type === "string"
         ? node.content.content_type
         : null;
-      if (authorRole === "assistant" || (metadata && ROUTE_KEYS.some((key) => typeof metadata[key] === "string"))) {
+      if (authorRole === "assistant" || authorRole === "tool"
+        || (metadata && ROUTE_KEYS.some((key) => typeof metadata[key] === "string"))) {
         const route = routeFromMetadata(metadata || {}, {
           messageId: typeof node.id === "string" ? node.id : null,
           createTime: node.create_time,
@@ -303,6 +309,7 @@
       canonicalModel,
       sameModel,
       modelLabel,
+      finiteTimestamp,
       exceptionalStatus,
       routeFromMetadata,
       routeKey,
@@ -486,9 +493,9 @@
       <style>
         *{box-sizing:border-box}button{font:12px/1.35 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
         .pill{pointer-events:auto;border:1px solid rgba(148,163,184,.45);border-radius:999px;padding:7px 10px;background:rgba(15,23,42,.94);color:#e2e8f0;box-shadow:0 7px 24px rgba(15,23,42,.22);cursor:pointer;max-width:min(440px,calc(100vw - 36px));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-        .pill.good{border-color:rgba(52,211,153,.55);color:#d1fae5}.pill.warn{border-color:rgba(251,191,36,.72);color:#fef3c7}.pill.unknown{color:#cbd5e1}
+        .pill.good{border-color:rgba(52,211,153,.55);color:#d1fae5}.pill.warn{border-color:rgba(251,191,36,.72);color:#fef3c7}.pill.suspect{border-color:rgba(96,165,250,.7);color:#dbeafe}.pill.unknown{color:#cbd5e1}
         .detail{pointer-events:auto;display:none;margin-top:8px;width:min(390px,calc(100vw - 36px));padding:11px 12px;border:1px solid rgba(148,163,184,.3);border-radius:14px;background:rgba(15,23,42,.96);color:#e2e8f0;box-shadow:0 10px 30px rgba(15,23,42,.28);font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace}
-        .detail.open{display:block}.row{display:grid;grid-template-columns:82px 1fr;gap:8px}.muted{color:#94a3b8}.warnText{color:#fbbf24}.goodText{color:#6ee7b7}
+        .detail.open{display:block}.row{display:grid;grid-template-columns:82px 1fr;gap:8px}.muted{color:#94a3b8}.warnText{color:#fbbf24}.suspectText{color:#93c5fd}.goodText{color:#6ee7b7}
       </style>
       <button type="button" class="pill unknown" id="pill" title="Click for persisted model route metadata">Model · waiting for metadata</button>
       <div class="detail" id="detail" role="status" aria-live="polite"></div>`;
@@ -516,14 +523,13 @@
         const actual = modelLabel(route.actual);
         const status = route.status ? ` · ${route.status}` : "";
         const runtimeConcern = executionConcern(route);
+        const strongWarning = route.mismatch || route.resolutionChanged || (route.status && route.status !== "unavailable");
         const text = route.mismatch && route.expected
           ? `⚠ actual model: ${modelLabel(route.expected)} → ${actual}${status}`
           : runtimeConcern
-            ? `⚠ actual model: ${actual} · execution signal incomplete${status}`
+            ? `? actual model: ${actual} · execution signal incomplete${status}`
             : `actual model: ${actual}${status}`;
-        const color = route.mismatch || route.resolutionChanged || runtimeConcern || (route.status && route.status !== "unavailable")
-          ? "#d97706"
-          : "#64748b";
+        const color = strongWarning ? "#d97706" : runtimeConcern ? "#60a5fa" : "#64748b";
         if (badge.textContent !== text) badge.textContent = text;
         if (badge.style.color !== color) badge.style.color = color;
       } else {
@@ -553,14 +559,15 @@
     const actual = route.actual ? modelLabel(route.actual) : null;
     const exceptional = route.status && route.status !== "unavailable";
     const runtimeConcern = executionConcern(route);
-    const warn = route.mismatch || route.resolutionChanged || exceptional || runtimeConcern;
+    const strongWarning = route.mismatch || route.resolutionChanged || exceptional;
+    const warn = strongWarning || runtimeConcern;
     const status = route.status ? ` · ${route.status}` : "";
-    pill.className = `pill ${warn ? "warn" : actual ? "good" : "unknown"}`;
+    pill.className = `pill ${strongWarning ? "warn" : runtimeConcern ? "suspect" : actual ? "good" : "unknown"}`;
     pill.textContent = actual
       ? (route.mismatch && route.expected
         ? `⚠ Actual ${modelLabel(route.expected)} → ${actual}${status}`
         : runtimeConcern
-          ? `⚠ Actual · ${actual} · execution signal incomplete${status}`
+          ? `? Actual · ${actual} · execution signal incomplete${status}`
           : `Actual · ${actual}${status}`)
       : `Actual · unknown${route.resolved ? ` · resolved ${modelLabel(route.resolved)}` : ""}${status}`;
     pill.dataset.focusedMessageId = identity.messageId || route.messageId || "";
@@ -569,7 +576,7 @@
       row("default", modelLabel(route.expected), route.mismatch ? "warnText" : "goodText"),
       row("requested", modelLabel(route.requested)),
       row("resolved", modelLabel(route.resolved)),
-      row("actual", actual || "unknown", warn ? "warnText" : "goodText"),
+      row("actual", actual || "unknown", strongWarning ? "warnText" : runtimeConcern ? "suspectText" : "goodText"),
       row("thinking", route.turnThinkingEffort || route.thinkingEffort),
       row("reasoning", route.turnReasoningObserved ? "observed" : "not observed"),
       row("tool signal", route.turnToolObserved ? "observed" : "not observed"),
@@ -581,7 +588,7 @@
         : route.source === "dom-message-model" ? "DOM message model" : route.source),
       route.override ? '<div class="warnText" style="margin-top:6px">orchestrator requested a model different from the persisted default</div>' : "",
       route.resolutionChanged ? '<div class="warnText" style="margin-top:6px">resolved route differs from the concrete model on this assistant message</div>' : "",
-      runtimeConcern ? '<div class="warnText" style="margin-top:6px">GPT-6 Pro is recorded, but this turn has no resolved-route, reasoning-lifecycle, or tool-execution evidence despite a nonzero thinking effort. This can match a degraded continuation; it is not proof of a different model.</div>' : "",
+      runtimeConcern ? '<div class="suspectText" style="margin-top:6px">Suspected execution degradation: GPT-6 Pro is recorded, but this turn has no resolved-route, reasoning-lifecycle, or tool-execution evidence despite a nonzero thinking effort. This is not proof of a different model.</div>' : "",
       exceptional ? '<div class="warnText" style="margin-top:6px">generation did not complete normally; model is shown only when persisted evidence exists</div>' : "",
       !route.actual ? '<div class="warnText" style="margin-top:6px">actual model is unavailable; the resolved route is not treated as execution proof</div>' : "",
       '<div class="muted" style="margin-top:6px">Local display only · conversation text is neither stored nor transmitted.</div>',
