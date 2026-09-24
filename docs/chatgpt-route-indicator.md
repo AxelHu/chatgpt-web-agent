@@ -15,7 +15,9 @@ It reports the fields that ChatGPT itself persists on assistant nodes:
   therefore the value displayed as **actual**.
 
 A warning is shown when an explicit persisted default and concrete message model
-differ after the small known GPT-6 Pro/Astra alias normalization. A separate note
+differ after the small known GPT-6 Pro/Astra alias normalization. GPT-6 Sol and
+GPT-6 Luna are intentionally treated as distinct concrete models, not aliases of
+GPT-6 Pro/Astra. A separate note
 is shown when the resolved route and concrete model differ. For example, a final
 assistant node with `resolved_model_slug: gpt-5-4-auto-thinking` and
 `model_slug: gpt-5-4-thinking` is displayed as actual **GPT-5.4 Thinking**, while
@@ -54,3 +56,10 @@ Offline regression:
 node --check userscripts/chatgpt-route-indicator.user.js
 node scripts/test-chatgpt-route-indicator.mjs
 ```
+Version 0.6 also adds a deliberately conservative execution-health warning for
+GPT-6 Pro/Astra. If a turn records a nonzero thinking effort but the whole turn
+contains no resolved-route evidence, no reasoning-lifecycle node, and no tool
+execution signal, the badge shows **execution signal incomplete** with a distinct
+suspect style. This is intentionally separate from the stronger wrong-model
+warning: it only marks the observable pattern seen in degraded continuation cases
+where the persisted model tag remained `gpt-6-pro`.
