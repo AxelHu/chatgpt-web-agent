@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT Actual Model Route
 // @namespace    https://chatgpt.com/
-// @version      0.5.0
+// @version      0.6.0
 // @description  Show the concrete model recorded on each ChatGPT assistant message without collecting conversation text.
 // @match        https://chatgpt.com/*
 // @run-at       document-start
@@ -73,6 +73,29 @@
     const resolved = typeof metadata.resolved_model_slug === "string" ? metadata.resolved_model_slug : null;
     const expected = typeof metadata.default_model_slug === "string" ? metadata.default_model_slug : null;
     const requested = typeof metadata.requested_model_slug === "string" ? metadata.requested_model_slug : null;
+    const thinkingEffort = typeof metadata.thinking_effort === "string"
+      ? metadata.thinking_effort
+      : typeof fallback.thinkingEffort === "string" ? fallback.thinkingEffort : null;
+    const reasoningStatus = typeof metadata.reasoning_status === "string"
+      ? metadata.reasoning_status
+      : typeof fallback.reasoningStatus === "string" ? fallback.reasoningStatus : null;
+    const contentType = typeof fallback.contentType === "string" ? fallback.contentType : null;
+    const recipient = typeof fallback.recipient === "string" ? fallback.recipient : null;
+    const authorRole = typeof fallback.authorRole === "string" ? fallback.authorRole : null;
+    const reasoningObserved = Boolean(
+      reasoningStatus
+      || contentType === "thoughts"
+      || contentType === "reasoning_recap"
+      || Number.isFinite(Number(metadata.reasoning_start_time))
+      || Number.isFinite(Number(metadata.reasoning_end_time))
+    );
+    const toolObserved = Boolean(
+      authorRole === "tool"
+      || (authorRole === "assistant"
+        && recipient
+        && recipient !== "all"
+        && recipient !== "web")
+    );
     const status = exceptionalStatus(metadata, fallback);
     if (!actual && !resolved && !requested && !expected && !status) return null;
     return {
@@ -86,6 +109,10 @@
       requested,
       actual,
       resolved,
+      thinkingEffort,
+      reasoningStatus,
+      reasoningObserved,
+      toolObserved,
       status,
       source: fallback.source || "metadata",
       mismatch: Boolean(expected && actual && !sameModel(expected, actual)),
@@ -120,6 +147,10 @@
       requested: next.requested || previous.requested || null,
       actual: next.actual || previous.actual || null,
       resolved: next.resolved || previous.resolved || null,
+      thinkingEffort: next.thinkingEffort || previous.thinkingEffort || null,
+      reasoningStatus: next.reasoningStatus || previous.reasoningStatus || null,
+      reasoningObserved: Boolean(previous.reasoningObserved || next.reasoningObserved),
+      toolObserved: Boolean(previous.toolObserved || next.toolObserved),
       status: next.status || previous.status || null,
       source: next.source || previous.source || "metadata",
     };
@@ -142,11 +173,17 @@
 
       const authorRole = node.author && typeof node.author === "object" ? node.author.role : null;
       const metadata = node.metadata && typeof node.metadata === "object" ? node.metadata : null;
+      const contentType = node.content && typeof node.content === "object" && typeof node.content.content_type === "string"
+        ? node.content.content_type
+        : null;
       if (authorRole === "assistant" || (metadata && ROUTE_KEYS.some((key) => typeof metadata[key] === "string"))) {
         const route = routeFromMetadata(metadata || {}, {
           messageId: typeof node.id === "string" ? node.id : null,
           createTime: node.create_time,
           status: typeof node.status === "string" ? node.status : null,
+          authorRole,
+          recipient: typeof node.recipient === "string" ? node.recipient : null,
+          contentType,
         });
         if (route) routes.push(route);
       }
@@ -239,8 +276,26 @@
       messageId: identity.messageId || result.messageId || null,
       turnExchangeId: result.turnExchangeId || identity.turnId || null,
     };
+    const turnPeers = result.turnExchangeId
+      ? values.filter((route) => route.turnExchangeId === result.turnExchangeId)
+      : [result];
+    result.turnThinkingEffort = result.thinkingEffort
+      || turnPeers.find((route) => route.thinkingEffort)?.thinkingEffort
+      || null;
+    result.turnReasoningObserved = turnPeers.some((route) => route.reasoningObserved);
+    result.turnToolObserved = turnPeers.some((route) => route.toolObserved);
+    result.turnResolvedObserved = turnPeers.some((route) => Boolean(route.resolved));
     if (!result.actual && !result.status) result.status = "unavailable";
     return result;
+  }
+
+  function executionConcern(route) {
+    if (!route || !sameModel(route.actual, "gpt-6-pro")) return null;
+    const effort = route.turnThinkingEffort || route.thinkingEffort;
+    if (!["standard", "medium", "high", "xhigh", "max"].includes(effort)) return null;
+    if (route.status && route.status !== "unavailable") return null;
+    if (route.turnReasoningObserved || route.turnToolObserved || route.turnResolvedObserved) return null;
+    return "execution-evidence-missing";
   }
 
   if (testHook && typeof testHook === "object") {
@@ -255,6 +310,7 @@
       collectRoutes,
       chooseLatest,
       routeForIdentity,
+      executionConcern,
     };
     return;
   }
@@ -459,10 +515,13 @@
       if (route.actual) {
         const actual = modelLabel(route.actual);
         const status = route.status ? ` · ${route.status}` : "";
+        const runtimeConcern = executionConcern(route);
         const text = route.mismatch && route.expected
           ? `⚠ actual model: ${modelLabel(route.expected)} → ${actual}${status}`
-          : `actual model: ${actual}${status}`;
-        const color = route.mismatch || route.resolutionChanged || (route.status && route.status !== "unavailable")
+          : runtimeConcern
+            ? `⚠ actual model: ${actual} · execution signal incomplete${status}`
+            : `actual model: ${actual}${status}`;
+        const color = route.mismatch || route.resolutionChanged || runtimeConcern || (route.status && route.status !== "unavailable")
           ? "#d97706"
           : "#64748b";
         if (badge.textContent !== text) badge.textContent = text;
@@ -493,13 +552,16 @@
     }
     const actual = route.actual ? modelLabel(route.actual) : null;
     const exceptional = route.status && route.status !== "unavailable";
-    const warn = route.mismatch || route.resolutionChanged || exceptional;
+    const runtimeConcern = executionConcern(route);
+    const warn = route.mismatch || route.resolutionChanged || exceptional || runtimeConcern;
     const status = route.status ? ` · ${route.status}` : "";
     pill.className = `pill ${warn ? "warn" : actual ? "good" : "unknown"}`;
     pill.textContent = actual
       ? (route.mismatch && route.expected
         ? `⚠ Actual ${modelLabel(route.expected)} → ${actual}${status}`
-        : `Actual · ${actual}${status}`)
+        : runtimeConcern
+          ? `⚠ Actual · ${actual} · execution signal incomplete${status}`
+          : `Actual · ${actual}${status}`)
       : `Actual · unknown${route.resolved ? ` · resolved ${modelLabel(route.resolved)}` : ""}${status}`;
     pill.dataset.focusedMessageId = identity.messageId || route.messageId || "";
     const row = (name, value, className = "") => `<div class="row"><span class="muted">${name}</span><span class="${className}">${escapeHtml(value || "—")}</span></div>`;
@@ -508,6 +570,9 @@
       row("requested", modelLabel(route.requested)),
       row("resolved", modelLabel(route.resolved)),
       row("actual", actual || "unknown", warn ? "warnText" : "goodText"),
+      row("thinking", route.turnThinkingEffort || route.thinkingEffort),
+      row("reasoning", route.turnReasoningObserved ? "observed" : "not observed"),
+      row("tool signal", route.turnToolObserved ? "observed" : "not observed"),
       row("status", route.status || "complete"),
       row("message", (identity.messageId || route.messageId) ? `${(identity.messageId || route.messageId).slice(0, 8)}…` : "—"),
       row("turn", route.turnExchangeId ? `${route.turnExchangeId.slice(0, 8)}…` : "—"),
@@ -516,6 +581,7 @@
         : route.source === "dom-message-model" ? "DOM message model" : route.source),
       route.override ? '<div class="warnText" style="margin-top:6px">orchestrator requested a model different from the persisted default</div>' : "",
       route.resolutionChanged ? '<div class="warnText" style="margin-top:6px">resolved route differs from the concrete model on this assistant message</div>' : "",
+      runtimeConcern ? '<div class="warnText" style="margin-top:6px">GPT-6 Pro is recorded, but this turn has no resolved-route, reasoning-lifecycle, or tool-execution evidence despite a nonzero thinking effort. This can match a degraded continuation; it is not proof of a different model.</div>' : "",
       exceptional ? '<div class="warnText" style="margin-top:6px">generation did not complete normally; model is shown only when persisted evidence exists</div>' : "",
       !route.actual ? '<div class="warnText" style="margin-top:6px">actual model is unavailable; the resolved route is not treated as execution proof</div>' : "",
       '<div class="muted" style="margin-top:6px">Local display only · conversation text is neither stored nor transmitted.</div>',

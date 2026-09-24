@@ -56,3 +56,10 @@ Offline regression:
 node --check userscripts/chatgpt-route-indicator.user.js
 node scripts/test-chatgpt-route-indicator.mjs
 ```
+Version 0.6 also adds a deliberately conservative execution-health warning for
+GPT-6 Pro/Astra. If a turn records a nonzero thinking effort but the whole turn
+contains no resolved-route evidence, no reasoning-lifecycle node, and no tool
+execution signal, the badge shows **execution signal incomplete**. This is not
+reported as a wrong-model event: it only marks the observable pattern seen in
+degraded continuation cases where the persisted model tag remained
+`gpt-6-pro`.

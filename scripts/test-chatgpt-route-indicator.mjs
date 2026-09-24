@@ -20,6 +20,7 @@ const {
   exceptionalStatus,
   sameModel,
   modelLabel,
+  executionConcern,
 } = hook.exports;
 
 assert.equal(sameModel("gpt-6-astra", "gpt-6-pro"), true);
@@ -71,6 +72,72 @@ const healthy = routeFromMetadata({
 });
 assert.equal(healthy.mismatch, false);
 assert.equal(healthy.actual, "gpt-6-pro");
+
+// A GPT-6 Pro turn can retain the expected model tag while losing the rest of
+// the execution lifecycle. This mirrors the observed degraded continuation:
+// standard thinking was requested, but there was no resolved route, reasoning
+// sibling, or tool execution signal.
+const degradedContinuation = routeForIdentity({
+  messageId: "degraded-continuation-final",
+  turnId: "degraded-continuation",
+  modelSlug: "gpt-6-pro",
+  status: "finished_successfully",
+}, new Map([[
+  "degraded-continuation-final",
+  routeFromMetadata({
+    model_slug: "gpt-6-pro",
+    thinking_effort: "standard",
+    turn_exchange_id: "degraded-continuation",
+  }, {
+    messageId: "degraded-continuation-final",
+    authorRole: "assistant",
+    contentType: "text",
+  }),
+]]));
+assert.equal(degradedContinuation.turnReasoningObserved, false);
+assert.equal(degradedContinuation.turnToolObserved, false);
+assert.equal(degradedContinuation.turnResolvedObserved, false);
+assert.equal(executionConcern(degradedContinuation), "execution-evidence-missing");
+
+// A normal long-running GPT-6 Pro turn has sibling execution evidence even
+// though its final visible text node can itself have no reasoning status.
+const healthyLongTurnRoutes = collectRoutes({ mapping: {
+  reasoning: { message: {
+    id: "healthy-reasoning",
+    create_time: 40,
+    author: { role: "assistant" },
+    content: { content_type: "thoughts", parts: [] },
+    recipient: "all",
+    metadata: {
+      model_slug: "gpt-6-pro",
+      resolved_model_slug: "gpt-6-pro",
+      thinking_effort: "standard",
+      reasoning_status: "is_reasoning",
+      turn_exchange_id: "healthy-long-turn",
+    },
+  } },
+  final: { message: {
+    id: "healthy-final",
+    create_time: 41,
+    author: { role: "assistant" },
+    content: { content_type: "text", parts: ["done"] },
+    recipient: "all",
+    metadata: {
+      model_slug: "gpt-6-pro",
+      turn_exchange_id: "healthy-long-turn",
+    },
+  } },
+} });
+const healthyLongTurnMap = new Map(healthyLongTurnRoutes.map((route) => [routeKey(route), route]));
+const healthyFinal = routeForIdentity({
+  messageId: "healthy-final",
+  turnId: "healthy-long-turn",
+  modelSlug: "gpt-6-pro",
+  status: "finished_successfully",
+}, healthyLongTurnMap);
+assert.equal(healthyFinal.turnReasoningObserved, true);
+assert.equal(healthyFinal.turnResolvedObserved, true);
+assert.equal(executionConcern(healthyFinal), null);
 
 const payload = {
   mapping: {
