@@ -1,0 +1,52 @@
+{
+  "verifiedAt": "2026-09-28T08:17:53.873247+00:00",
+  "changedLeafPaths": [
+    "agents.defaults.imageModel.fallbacks",
+    "agents.defaults.imageModel.primary",
+    "agents.defaults.model.primary",
+    "agents.entries.huabi.model.primary",
+    "agents.entries.hunter.model.primary",
+    "agents.entries.huoshan.model.fallbacks",
+    "agents.entries.index.model.primary",
+    "agents.entries.mala.model.primary",
+    "agents.entries.reader-r01.model.primary",
+    "agents.entries.reader-r04.model.primary",
+    "agents.entries.reader-r06.model.primary",
+    "agents.entries.reader-r08.model.primary",
+    "agents.entries.reader-r10.model.primary",
+    "agents.entries.wenshi.model.primary",
+    "agents.entries.yinzhang.model.primary",
+    "agents.entries.zero-artist.model.primary",
+    "agents.entries.zero-designer.model.primary",
+    "agents.entries.zero-producer.model.primary",
+    "agents.entries.zero-reviewer.model.primary"
+  ],
+  "unexpectedChangedPaths": [],
+  "remainingM3AgentRuntimeReferences": [],
+  "explicitM31PrimaryAgents": [
+    "mala",
+    "zero-producer",
+    "zero-designer",
+    "zero-artist",
+    "zero-reviewer",
+    "reader-r01",
+    "reader-r04",
+    "reader-r06",
+    "reader-r08",
+    "reader-r10",
+    "hunter",
+    "index",
+    "huabi",
+    "yinzhang",
+    "wenshi"
+  ],
+  "defaultModel": {
+    "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+  },
+  "imageModel": {
+    "fallbacks": [
+      "minimax/MiniMax-M3.1-Flash-Preview"
+    ],
+    "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+  }
+}
