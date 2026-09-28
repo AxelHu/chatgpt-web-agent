@@ -1,0 +1,208 @@
+{
+  "createdAt": "2026-09-28T08:09:48.479719+00:00",
+  "baseSha256": "43c3cf1190682268dd1b7e05ba5b0473b5677c3b370dcf2d8fd10a05d6427690",
+  "changes": [
+    {
+      "path": "agents.defaults.model",
+      "before": {
+        "primary": "minimax/MiniMax-M3"
+      },
+      "after": {
+        "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+      }
+    },
+    {
+      "path": "agents.defaults.imageModel",
+      "before": {
+        "fallbacks": [
+          "minimax/MiniMax-M3"
+        ],
+        "primary": "minimax/MiniMax-M3"
+      },
+      "after": {
+        "fallbacks": [
+          "minimax/MiniMax-M3.1-Flash-Preview"
+        ],
+        "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+      }
+    },
+    {
+      "path": "agents.entries.mala.model",
+      "before": {
+        "fallbacks": [],
+        "primary": "minimax/MiniMax-M3"
+      },
+      "after": {
+        "fallbacks": [],
+        "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+      }
+    },
+    {
+      "path": "agents.entries.zero-producer.model",
+      "before": {
+        "fallbacks": [],
+        "primary": "minimax/MiniMax-M3"
+      },
+      "after": {
+        "fallbacks": [],
+        "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+      }
+    },
+    {
+      "path": "agents.entries.zero-designer.model",
+      "before": {
+        "fallbacks": [],
+        "primary": "minimax/MiniMax-M3"
+      },
+      "after": {
+        "fallbacks": [],
+        "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+      }
+    },
+    {
+      "path": "agents.entries.zero-artist.model",
+      "before": {
+        "fallbacks": [],
+        "primary": "minimax/MiniMax-M3"
+      },
+      "after": {
+        "fallbacks": [],
+        "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+      }
+    },
+    {
+      "path": "agents.entries.zero-reviewer.model",
+      "before": {
+        "fallbacks": [],
+        "primary": "minimax/MiniMax-M3"
+      },
+      "after": {
+        "fallbacks": [],
+        "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+      }
+    },
+    {
+      "path": "agents.entries.reader-r01.model",
+      "before": {
+        "fallbacks": [],
+        "primary": "minimax/MiniMax-M3"
+      },
+      "after": {
+        "fallbacks": [],
+        "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+      }
+    },
+    {
+      "path": "agents.entries.reader-r04.model",
+      "before": {
+        "fallbacks": [],
+        "primary": "minimax/MiniMax-M3"
+      },
+      "after": {
+        "fallbacks": [],
+        "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+      }
+    },
+    {
+      "path": "agents.entries.reader-r06.model",
+      "before": {
+        "fallbacks": [],
+        "primary": "minimax/MiniMax-M3"
+      },
+      "after": {
+        "fallbacks": [],
+        "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+      }
+    },
+    {
+      "path": "agents.entries.reader-r08.model",
+      "before": {
+        "fallbacks": [],
+        "primary": "minimax/MiniMax-M3"
+      },
+      "after": {
+        "fallbacks": [],
+        "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+      }
+    },
+    {
+      "path": "agents.entries.reader-r10.model",
+      "before": {
+        "fallbacks": [],
+        "primary": "minimax/MiniMax-M3"
+      },
+      "after": {
+        "fallbacks": [],
+        "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+      }
+    },
+    {
+      "path": "agents.entries.huoshan.model",
+      "before": {
+        "fallbacks": [
+          "volcengine/minimax-m3",
+          "volcengine/doubao-seed-2.0-pro"
+        ],
+        "primary": "volcengine/glm-5.2"
+      },
+      "after": {
+        "fallbacks": [
+          "minimax/MiniMax-M3.1-Flash-Preview",
+          "volcengine/doubao-seed-2.0-pro"
+        ],
+        "primary": "volcengine/glm-5.2"
+      }
+    },
+    {
+      "path": "agents.entries.hunter.model",
+      "before": {
+        "primary": "minimax/MiniMax-M3"
+      },
+      "after": {
+        "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+      }
+    },
+    {
+      "path": "agents.entries.index.model",
+      "before": {
+        "primary": "minimax/MiniMax-M3"
+      },
+      "after": {
+        "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+      }
+    },
+    {
+      "path": "agents.entries.huabi.model",
+      "before": {
+        "primary": "minimax/MiniMax-M3",
+        "fallbacks": []
+      },
+      "after": {
+        "primary": "minimax/MiniMax-M3.1-Flash-Preview",
+        "fallbacks": []
+      }
+    },
+    {
+      "path": "agents.entries.yinzhang.model",
+      "before": {
+        "primary": "minimax/MiniMax-M3",
+        "fallbacks": []
+      },
+      "after": {
+        "primary": "minimax/MiniMax-M3.1-Flash-Preview",
+        "fallbacks": []
+      }
+    },
+    {
+      "path": "agents.entries.wenshi.model",
+      "before": {
+        "primary": "minimax/MiniMax-M3",
+        "fallbacks": []
+      },
+      "after": {
+        "primary": "minimax/MiniMax-M3.1-Flash-Preview",
+        "fallbacks": []
+      }
+    }
+  ]
+}

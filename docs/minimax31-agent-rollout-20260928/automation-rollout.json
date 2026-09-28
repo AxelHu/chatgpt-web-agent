@@ -1,0 +1,32 @@
+{
+  "verifiedAt": "2026-09-28T08:17:07.992989+00:00",
+  "count": 4,
+  "receipts": [
+    {
+      "id": "d39effb2-6788-4b73-bd69-b46d4d7a46e7",
+      "name": "health-check-index",
+      "beforeModel": "minimax/MiniMax-M3",
+      "afterModel": "minimax/MiniMax-M3.1-Flash-Preview"
+    },
+    {
+      "id": "77a40465-0825-495d-8c61-cce231bb1720",
+      "name": "librarian-daily-scan",
+      "beforeModel": "minimax/MiniMax-M3",
+      "afterModel": "minimax/MiniMax-M3.1-Flash-Preview"
+    },
+    {
+      "id": "daa28d3f-f363-4d29-bd09-d02627d2f757",
+      "name": "check-qmd-issue-735-daily",
+      "beforeModel": "minimax/MiniMax-M3",
+      "afterModel": "minimax/MiniMax-M3.1-Flash-Preview"
+    },
+    {
+      "id": "3987a894-ae4f-44f9-8193-477c2ce8ac21",
+      "name": "librarian-weekly-summary",
+      "beforeModel": "minimax/MiniMax-M3",
+      "afterModel": "minimax/MiniMax-M3.1-Flash-Preview"
+    }
+  ],
+  "schedulesDeliveryAndOtherPayloadFieldsUnchanged": true,
+  "remainingM3Pins": []
+}

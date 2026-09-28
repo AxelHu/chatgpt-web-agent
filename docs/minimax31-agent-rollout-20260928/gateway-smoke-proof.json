@@ -1,0 +1,27 @@
+{
+  "executionTrace": {
+    "winnerProvider": "minimax",
+    "winnerModel": "MiniMax-M3.1-Flash-Preview",
+    "attempts": [
+      {
+        "provider": "minimax",
+        "model": "MiniMax-M3.1-Flash-Preview",
+        "result": "success",
+        "stage": "assistant"
+      }
+    ],
+    "fallbackUsed": false,
+    "runner": "embedded"
+  },
+  "requestShaping": {
+    "authMode": "auth-profile",
+    "thinking": "max"
+  },
+  "finalAssistantVisibleText": "M31_ROLLOUT_OK",
+  "completion": {
+    "stopReason": "stop",
+    "finishReason": "stop"
+  },
+  "verifiedAt": "2026-09-28T08:20:06.269513+00:00",
+  "explicitModelOverride": false
+}

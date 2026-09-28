@@ -1,0 +1,114 @@
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+      },
+      "imageModel": {
+        "fallbacks": [
+          "minimax/MiniMax-M3.1-Flash-Preview"
+        ],
+        "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+      }
+    },
+    "entries": {
+      "mala": {
+        "model": {
+          "fallbacks": [],
+          "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+        }
+      },
+      "zero-producer": {
+        "model": {
+          "fallbacks": [],
+          "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+        }
+      },
+      "zero-designer": {
+        "model": {
+          "fallbacks": [],
+          "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+        }
+      },
+      "zero-artist": {
+        "model": {
+          "fallbacks": [],
+          "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+        }
+      },
+      "zero-reviewer": {
+        "model": {
+          "fallbacks": [],
+          "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+        }
+      },
+      "reader-r01": {
+        "model": {
+          "fallbacks": [],
+          "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+        }
+      },
+      "reader-r04": {
+        "model": {
+          "fallbacks": [],
+          "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+        }
+      },
+      "reader-r06": {
+        "model": {
+          "fallbacks": [],
+          "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+        }
+      },
+      "reader-r08": {
+        "model": {
+          "fallbacks": [],
+          "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+        }
+      },
+      "reader-r10": {
+        "model": {
+          "fallbacks": [],
+          "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+        }
+      },
+      "huoshan": {
+        "model": {
+          "fallbacks": [
+            "minimax/MiniMax-M3.1-Flash-Preview",
+            "volcengine/doubao-seed-2.0-pro"
+          ],
+          "primary": "volcengine/glm-5.2"
+        }
+      },
+      "hunter": {
+        "model": {
+          "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+        }
+      },
+      "index": {
+        "model": {
+          "primary": "minimax/MiniMax-M3.1-Flash-Preview"
+        }
+      },
+      "huabi": {
+        "model": {
+          "primary": "minimax/MiniMax-M3.1-Flash-Preview",
+          "fallbacks": []
+        }
+      },
+      "yinzhang": {
+        "model": {
+          "primary": "minimax/MiniMax-M3.1-Flash-Preview",
+          "fallbacks": []
+        }
+      },
+      "wenshi": {
+        "model": {
+          "primary": "minimax/MiniMax-M3.1-Flash-Preview",
+          "fallbacks": []
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "benchmarkRevision": "432830eb5bb2364869c0b3a3c05e231041347813",
+  "model": "minimax/MiniMax-M3.1-Flash-Preview",
+  "thinking": "max",
+  "agent": "mala",
+  "runtime": "openclaw-agent-exec",
+  "budgetSecondsPerMode": 3600,
+  "order": [
+    "from-scratch",
+    "mixed"
+  ],
+  "inputIsolation": "separate new workspaces; workspaceOnly file tools; readonly inputs; no OS namespace sandbox",
+  "runs": [
+    {
+      "mode": "from-scratch",
+      "runId": "20260928T081613Z-m31scratch",
+      "answerPath": "projects/scene-building-benchmark/classroom-v1/from-scratch/minimax-m3-1-flash-preview/openclaw-mala-max/20260928T081613Z-m31scratch"
+    },
+    {
+      "mode": "mixed",
+      "runId": "20260928T081613Z-m31mixed",
+      "answerPath": "projects/scene-building-benchmark/classroom-v1/mixed/minimax-m3-1-flash-preview/openclaw-mala-max/20260928T081613Z-m31mixed"
+    }
+  ]
+}
