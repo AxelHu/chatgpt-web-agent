@@ -1,0 +1,40 @@
+{
+  "passed": true,
+  "model": {
+    "id": "MiniMax-M3.1-Flash-Preview",
+    "name": "MiniMax M3.1 Flash Preview",
+    "provider": "minimax",
+    "alias": "minimax-m31-flash",
+    "contextWindow": 1000000,
+    "reasoning": true,
+    "tags": [
+      "configured"
+    ],
+    "thinkingLevels": [
+      {
+        "id": "low",
+        "label": "low"
+      },
+      {
+        "id": "medium",
+        "label": "medium"
+      },
+      {
+        "id": "high",
+        "label": "high"
+      },
+      {
+        "id": "xhigh",
+        "label": "xhigh"
+      },
+      {
+        "id": "max",
+        "label": "max"
+      }
+    ],
+    "thinkingDefault": "max",
+    "available": true
+  },
+  "default_model_unchanged": true,
+  "runtime_selection_policy_reconciled": true
+}

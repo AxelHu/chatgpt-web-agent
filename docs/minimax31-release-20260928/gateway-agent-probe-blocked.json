@@ -1,0 +1,10 @@
+{
+  "action": "post-install gateway agent read-only file tool probe",
+  "state": "not-dispatched",
+  "tool_attempts": 6,
+  "model_requests": 0,
+  "receipt": "因 OpenAI 无法确定请求的安全状态，已拦截此工具调用。",
+  "same_tool_and_arguments": true,
+  "fallback_used": false,
+  "scope": "Only this additional gateway-turn probe is blocked. Installed catalog, five-effort isolated built-CLI tool proofs, direct provider receipts and local tests have independent evidence."
+}

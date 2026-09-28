@@ -1,0 +1,61 @@
+{
+  "openclaw": {
+    "commit": "7d3c40768e8e7c4b65d3ab47bca38e72dd3561b7",
+    "provider_tests_passed": 210,
+    "provider_test_files_passed": 13,
+    "build_exit_code": 0,
+    "installed_build_files_verified": 12372,
+    "independent_review": "scoped-clean",
+    "global_changed_gate": {
+      "passed": false,
+      "cause": "Six existing plugin compatibility entries due for removal; reproduced on unchanged baseline. MiniMax-scoped boundary report passes."
+    },
+    "patch_sha256": "8e881248e240857d5f5c05c6f61a864eceba2deb7103696b4b0cb00c411c7355",
+    "runtime_catalog_passed": true,
+    "runtime_alias": "minimax-m31-flash",
+    "explicit_policy_added_exact_ref_only": true,
+    "new_gateway_agent_probe": "blocked before dispatch after six identical tool attempts; no provider request",
+    "patch_archive_sha256": "cba560cae9dc85760e8b7719c1cff8e97a42fd6f6139a35017ff75381ccd3601",
+    "patch_archive": "openclaw-m31-flash.patch.gz"
+  },
+  "llm_canary": {
+    "head": "74f14cd3612ee006d11defe9796a53c681baed05",
+    "pr": 36,
+    "merge_commit": "efcb7d6e345e788139013b098207904ba3ad0587",
+    "tests_passed": 373,
+    "targeted_passed": 51,
+    "offline_resume": {
+      "network_requests": 0,
+      "credential_loads": 0,
+      "unchanged_sha256_files": 30
+    }
+  },
+  "scene_building_benchmark": {
+    "pr": 8,
+    "tests_passed": 56
+  },
+  "ai_research": {
+    "pr": 185,
+    "targeted_tests_passed": 30
+  },
+  "keyforge_lab": {
+    "pr": 32,
+    "tests_passed": 1198
+  },
+  "llm_town_lab": {
+    "pr": 94,
+    "head": "68173822690105979b9bdab7d84efee6f17a8b29",
+    "targeted_tests_passed": 48,
+    "full_suite_collected": 944,
+    "full_suite_state": "completed",
+    "native_tool_roundtrips": [
+      "low",
+      "max"
+    ],
+    "merge_commit": "858632b4a6321022da8a90f82f424e579955e083",
+    "merged": true,
+    "tests_passed": 943,
+    "tests_skipped": 1,
+    "skip_reason": "Existing explicit opt-in three-seed year-long soak; no new model tests skipped"
+  }
+}

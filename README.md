@@ -299,3 +299,7 @@ action，因此不会在目标账号缺失时借用 `main` 或其他 agent 身�
 实现复用正在运行的 OpenClaw Gateway，而不是读取飞书 `appSecret` 或自行维护 token。当前只提供
 主动外发和目录发现，不接收飞书入站消息；入站到 ChatGPT 网页会话的路由需要单独解决“绑定到哪个
 网页会话”的生命周期问题。
+
+## 模型发布接入记录
+
+[MiniMax M3.1 Flash：本机部署、跨仓库支持、冻结指纹与验证边界](docs/minimax31-release-20260928/README.md)。

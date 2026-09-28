@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "allowed_model_added": "minimax/MiniMax-M3.1-Flash-Preview",
+  "prior_allowlist_entries": 6,
+  "new_allowlist_entries": 7,
+  "default_model_unchanged": true,
+  "per_agent_policies_unchanged": true,
+  "provider_wildcards_added": false,
+  "before_sha256": "7c77e86db8b7fa0bcb721ffe69e355adbd54bd02d8c6faf39f1bd18133811f26",
+  "after_sha256": "43c3cf1190682268dd1b7e05ba5b0473b5677c3b370dcf2d8fd10a05d6427690"
+}
