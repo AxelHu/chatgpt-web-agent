@@ -1,0 +1,40 @@
+{
+  "passed": true,
+  "collected": 944,
+  "results": [
+    {
+      "index": 0,
+      "exit_code": 0,
+      "seconds": 649.59,
+      "collected": 236,
+      "log": "town-shard-0.log"
+    },
+    {
+      "index": 1,
+      "exit_code": 0,
+      "seconds": 579.29,
+      "collected": 236,
+      "log": "town-shard-1.log"
+    },
+    {
+      "index": 2,
+      "exit_code": 0,
+      "seconds": 260.63,
+      "collected": 236,
+      "log": "town-shard-2.log"
+    },
+    {
+      "index": 3,
+      "exit_code": 0,
+      "seconds": 387.17,
+      "collected": 236,
+      "log": "town-shard-3.log"
+    }
+  ],
+  "tests_passed": 943,
+  "tests_skipped": 1,
+  "skipped_node_ids": [
+    "tests/integration/test_town_soak.py::test_three_seed_year_soak"
+  ],
+  "tested_commit": "7a89e4d574d58e85851d0c193af9d03e664cc842"
+}

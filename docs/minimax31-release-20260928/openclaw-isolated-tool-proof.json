@@ -1,0 +1,120 @@
+{
+  "passed": true,
+  "rows": [
+    {
+      "effort": "low",
+      "passed": true,
+      "model": "MiniMax-M3.1-Flash-Preview",
+      "provider": "minimax",
+      "assistant_turns": 2,
+      "tools": {
+        "calls": 2,
+        "tools": [
+          "read"
+        ],
+        "failures": 0
+      },
+      "usage": {
+        "input": 8042,
+        "output": 113,
+        "cacheRead": 8064,
+        "total": 16219,
+        "cost": {
+          "total": 0
+        }
+      }
+    },
+    {
+      "effort": "medium",
+      "passed": true,
+      "model": "MiniMax-M3.1-Flash-Preview",
+      "provider": "minimax",
+      "assistant_turns": 2,
+      "tools": {
+        "calls": 2,
+        "tools": [
+          "read"
+        ],
+        "failures": 0
+      },
+      "usage": {
+        "input": 8066,
+        "output": 122,
+        "cacheRead": 8064,
+        "total": 16252,
+        "cost": {
+          "total": 0
+        }
+      }
+    },
+    {
+      "effort": "high",
+      "passed": true,
+      "model": "MiniMax-M3.1-Flash-Preview",
+      "provider": "minimax",
+      "assistant_turns": 2,
+      "tools": {
+        "calls": 2,
+        "tools": [
+          "read"
+        ],
+        "failures": 0
+      },
+      "usage": {
+        "input": 8045,
+        "output": 121,
+        "cacheRead": 8064,
+        "total": 16230,
+        "cost": {
+          "total": 0
+        }
+      }
+    },
+    {
+      "effort": "xhigh",
+      "passed": true,
+      "model": "MiniMax-M3.1-Flash-Preview",
+      "provider": "minimax",
+      "assistant_turns": 2,
+      "tools": {
+        "calls": 2,
+        "tools": [
+          "read"
+        ],
+        "failures": 0
+      },
+      "usage": {
+        "input": 8057,
+        "output": 163,
+        "cacheRead": 8064,
+        "total": 16284,
+        "cost": {
+          "total": 0
+        }
+      }
+    },
+    {
+      "effort": "max",
+      "passed": true,
+      "model": "MiniMax-M3.1-Flash-Preview",
+      "provider": "minimax",
+      "assistant_turns": 2,
+      "tools": {
+        "calls": 2,
+        "tools": [
+          "read"
+        ],
+        "failures": 0
+      },
+      "usage": {
+        "input": 8051,
+        "output": 142,
+        "cacheRead": 8064,
+        "total": 16257,
+        "cost": {
+          "total": 0
+        }
+      }
+    }
+  ]
+}
