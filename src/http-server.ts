@@ -12,6 +12,7 @@ import type { LocalToolBackend } from "./backend/types.js";
 import type { FullTrace } from "./full-trace.js";
 import type { RequestLedger } from "./request-ledger.js";
 import { createMcpProtocolServer } from "./server.js";
+import { EventRuntime } from "./events.js";
 
 const MODERN_PROTOCOL_VERSION = "2026-07-28";
 
@@ -19,6 +20,7 @@ export type HttpMcpServerOptions = {
   backend: LocalToolBackend;
   ledger?: RequestLedger;
   trace?: FullTrace;
+  events?: EventRuntime | false;
 };
 
 export type HttpMcpServer = {
@@ -32,6 +34,9 @@ function errorKind(error: unknown): string {
 
 export function createHttpMcpServer(options: HttpMcpServerOptions): HttpMcpServer {
   const { backend, ledger, trace } = options;
+  const events = options.events === false
+    ? undefined
+    : options.events ?? (process.env.CHATGPT_WEB_AGENT_EVENTS_ENABLED === "true" ? new EventRuntime() : undefined);
   const reportHandlerError = (phase: string, error: unknown) => {
     ledger?.record({ phase, ok: false, errorKind: errorKind(error) });
     trace?.record({ phase, ok: false, error });
@@ -49,7 +54,12 @@ export function createHttpMcpServer(options: HttpMcpServerOptions): HttpMcpServe
         ok: true,
         metadata: { era: context.era },
       });
-      return createMcpProtocolServer(backend, ledger, trace);
+      return createMcpProtocolServer(
+        backend,
+        ledger,
+        trace,
+        context.era === "modern" ? events : undefined,
+      );
     },
     {
       // Modern clients use the 2026-07-28 per-request/sessionless protocol.
@@ -79,6 +89,7 @@ export function createHttpMcpServer(options: HttpMcpServerOptions): HttpMcpServe
           modernProtocol: MODERN_PROTOCOL_VERSION,
           legacyCompatibility: "stateless",
           sessions: 0,
+          events: Boolean(events),
         }),
       );
       return;

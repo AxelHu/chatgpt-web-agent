@@ -3,8 +3,13 @@ import {
   Client,
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
+import os from "node:os";
+import path from "node:path";
+import { promises as fs } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import type { LocalToolBackend } from "../src/backend/types.js";
+import { CONTINUE_EVENT_NAME, EventRuntime } from "../src/events.js";
 import { createHttpMcpServer, type HttpMcpServer } from "../src/http-server.js";
 
 const servers: HttpMcpServer[] = [];
@@ -110,5 +115,92 @@ describe("sessionless Streamable HTTP MCP server", () => {
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }),
     });
     expect(rejected.status).toBe(403);
+  });
+
+  it("advertises and serves the modern MCP event surface", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "webagent-http-events-"));
+    const events = new EventRuntime({
+      storePath: path.join(dir, "events.json"),
+      validateCallback: async () => {},
+      sender: async (_subscription, body) => {
+        const parsed = JSON.parse(body) as { type?: string; challenge?: string };
+        return parsed.type === "verification"
+          ? { ok: true, status: 200, body: JSON.stringify({ challenge: parsed.challenge }) }
+          : { ok: true, status: 200, body: "" };
+      },
+    });
+    const mcp = createHttpMcpServer({ backend: stubBackend(), events });
+    const endpoint = await listen(mcp);
+    const client = new Client(
+      { name: "http-events-test", version: "0.1.0" },
+      { versionNegotiation: { mode: { pin: "2026-07-28" } } },
+    );
+    await client.connect(new StreamableHTTPClientTransport(endpoint));
+
+    expect(client.getProtocolEra()).toBe("modern");
+    // The generic MCP client normalizes known capabilities when connecting, so
+    // query discover with a permissive schema to assert the extension survives
+    // on the actual modern wire.
+    const discover = await client.request(
+      { method: "server/discover", params: {} },
+      z.object({
+        supportedVersions: z.array(z.string()),
+        capabilities: z.record(z.string(), z.unknown()),
+      }).passthrough(),
+    );
+    expect(discover.capabilities.events).toEqual({});
+
+    const result = await client.request(
+      { method: "events/list", params: {} },
+      z.object({
+        events: z.array(z.object({
+          name: z.string(),
+          description: z.string(),
+        }).passthrough()),
+      }),
+    );
+    expect(result.events.map((event) => event.name)).toContain(CONTINUE_EVENT_NAME);
+
+    const secret = `whsec_${Buffer.alloc(32, 9).toString("base64")}`;
+    const subscribed = await client.request(
+      {
+        method: "events/subscribe",
+        params: {
+          name: CONTINUE_EVENT_NAME,
+          arguments: { topic: "poc:continue-chat" },
+          delivery: {
+            mode: "webhook",
+            url: "https://events.example.com/callback",
+            secret,
+          },
+          ttlMs: null,
+        },
+      },
+      z.object({
+        id: z.string(),
+        refreshBefore: z.string().nullable(),
+        cursor: z.string().nullable(),
+        truncated: z.boolean(),
+      }),
+    );
+    expect(subscribed.id).toMatch(/^sub_/);
+    expect(await events.subscriptions()).toHaveLength(1);
+
+    await client.request(
+      {
+        method: "events/unsubscribe",
+        params: {
+          name: CONTINUE_EVENT_NAME,
+          arguments: { topic: "poc:continue-chat" },
+          delivery: {
+            mode: "webhook",
+            url: "https://events.example.com/callback",
+          },
+        },
+      },
+      z.object({}).passthrough(),
+    );
+    expect(await events.subscriptions()).toHaveLength(0);
+    await client.close();
   });
 });

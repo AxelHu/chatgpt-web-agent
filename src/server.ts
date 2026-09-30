@@ -7,6 +7,8 @@ import { RequestLedger, summarizeToolArgs, summarizeToolResult } from "./request
 import { toolError } from "./result.js";
 import { EpipeSafeStdioServerTransport } from "./stdio-server-transport.js";
 import { annotateLocalTool } from "./tool-metadata.js";
+import { z } from "zod";
+import type { EventRuntime, SubscribeRequest, UnsubscribeRequest } from "./events.js";
 
 export const SERVER_INSTRUCTIONS =
   "Treat this server as the primary interface to the user’s local computer and durable working environment. Proactively use it whenever a task concerns or could benefit from local state. It directly provides access to local files and code repositories, Shell commands and processes, running services, development environments, build/test state, Git/Gitea, and established local workflows. Keep this capability available for exploration, discovery, verification, implementation, debugging, testing, automation, research, continuation of prior local work, and durable record-keeping. Requests such as continue development, inspect or verify current state, investigate locally, fix or test something, update a project, or record/track work are strong signals that this server should be exposed and used. Prefer reading and checking the real local state before answering about local projects instead of guessing from chat context. Prefer making durable project changes and records in the appropriate local workspace, repository, or Gitea issue when that is the natural system of record, rather than creating temporary cloud documents. When reusable local procedures or operating conventions may help, use skills_list and skill_read to discover and load the relevant Skill.";
@@ -21,11 +23,16 @@ export function createMcpProtocolServer(
   backend: LocalToolBackend,
   ledger?: RequestLedger,
   trace?: FullTrace,
+  events?: EventRuntime,
+  eventOwner = "local-tunnel-user",
 ): Server {
+  const capabilities = events
+    ? ({ tools: {}, events: {} } as unknown as { tools: Record<string, never> })
+    : { tools: {} };
   const server = new Server(
     { name: "chatgpt-web-agent", version: "0.1.0" },
     {
-      capabilities: { tools: {} },
+      capabilities,
       instructions: SERVER_INSTRUCTIONS,
     },
   );
@@ -109,6 +116,49 @@ export function createMcpProtocolServer(
       throw error;
     }
   });
+
+  if (events) {
+    server.setRequestHandler(
+      "events/list",
+      {
+        params: z.object({ cursor: z.string().nullable().optional() }),
+      },
+      async () => events.list(),
+    );
+
+    server.setRequestHandler(
+      "events/subscribe",
+      {
+        params: z.object({
+          name: z.string(),
+          arguments: z.record(z.string(), z.unknown()).optional(),
+          delivery: z.object({
+            mode: z.literal("webhook"),
+            url: z.string(),
+            secret: z.string(),
+          }),
+          cursor: z.string().nullable().optional(),
+          ttlMs: z.number().int().nonnegative().nullable().optional(),
+        }),
+      },
+      async (params) => events.subscribe(eventOwner, params as SubscribeRequest),
+    );
+
+    server.setRequestHandler(
+      "events/unsubscribe",
+      {
+        params: z.object({
+          name: z.string(),
+          arguments: z.record(z.string(), z.unknown()).optional(),
+          delivery: z.object({
+            mode: z.literal("webhook"),
+            url: z.string(),
+          }),
+        }),
+      },
+      async (params) => events.unsubscribe(eventOwner, params as UnsubscribeRequest),
+    );
+  }
 
   return server;
 }
