@@ -69,7 +69,43 @@ socket回收以及502/504前置失败切换问题，已修复并加入真实代�
 - https://nodejs.org/api/https.html
 - https://developers.cloudflare.com/1.1.1.1/encryption/dns-over-https/make-api-requests/dns-json/
 
-## 端到端验收（待追加实际结果）
+## 真实平台验收结果
 
-修复后的平台创建、真实 callback 验证、事件投递、新 run、文件读取以及清理
-必须分别记录。Work 成功不自动证明普通 Chat 可作为事件运行目标。
+以下时间为 2026-09-30 UTC+8：
+
+| 阶段 | 证据 | 结果 |
+|---|---|---|
+| Work 原生创建入口 | list_event_sources、discover_webhook_schema、带 triggers 的 create | 通过 |
+| 订阅创建 | 修复后只调用一次 create，平台返回 SUCCESS；14:43:39 服务端 event_subscribed | 通过 |
+| 会话绑定 | executor=cloud，thread_mode=existing_chat，source_conversation_is_work_mode=true，conversation_id 是原 Work 会话 | 通过 |
+| 退出创建回合 | 云端创建回复完成，Desktop 报 idle，尚未读取 marker | 通过 |
+| 独立事件投递 | 14:45:27 一个 logical event；HTTP200，attempts=1，ambiguousAttempts=0 | 通过 |
+| 平台记录触发 | last_run_time 更新为14:45:34.178707 | 已观察 |
+| 新模型回合/工具调用 | 14:55:40读取全部46个conversation mapping节点，没有投递后的新节点；本机也没有marker读取或workflow_status调用 | 未验收 |
+| 运行详情 | 第一方UI实际使用的 GET /automation/{id}/latest_backing_run?include_snapshot=true 返回HTTP200/body=null | 未提供进一步运行回执 |
+| 测试清理 | 14:56:53平台禁用测试任务成功，实际下发events/unsubscribe；14:57:09本机测试订阅为0 | 通过 |
+
+不得将 last_run_time 更新直接写成“模型已工作”，也不能依据空运行记录
+断言具体原因是 Auto Review、额度、模型还是平台故障。观察到的边界是：
+签名事件已接收、任务触发时间已记录，但尚无新模型执行证据。
+
+测试只发一个事件，未点击 Run now，未通过 Desktop send 冒充续轮，
+没有修改既有研究/Feed任务，没有开启周期监工。已暂停的测试任务保留回执，
+本机订阅已由平台原生取消；已接受的outbox记录仅作为历史证据保留。
+
+关联证据位于 workspace scratch/mcp-events-work-api-20260930/
+final-probe-receipt.json、single-event-delivery.json、task-executor-receipt.json、
+all-branches-after-event.json。文件包含精确task/subscription/event/message ID，
+不包含callback URL、签名secret或登录凭据。
+
+## 下一边界和封装判断
+
+“Pro没有事件能力”已被本次Work实测反证；“普通Chat自动续轮已实现”仍未成立。
+最短已验证创建路径是 Work 原生事件任务工具。现有事件发送接口可以继续
+复用本机 topic+真实subscription；没有必要为了创建先猜测个人Tasks的私有REST写接口。
+公开 Workspace Agents trigger API 是另一种可封装产品，但其agtch渠道、
+身份token和会话键不是个人普通Chat的ID，不应混为一谈。
+
+Issue #41 保持打开，下一真实验收是解释云端事件触发后缺少模型run的原因，
+以及确认可控的Work/普通Chat目标、执行模型和工具可用性。不要重做已通过的
+事件目录或继续把其余问题归于旧MCP目录。
