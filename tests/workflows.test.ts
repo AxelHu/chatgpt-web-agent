@@ -44,13 +44,14 @@ describe('supervisor → event → worker orchestration',()=>{
   expect(c.dispatch({sourceTask:'supervisor',leaseToken:s,target:'supervisor',dedupKey:'self',reason:'again'}).reason).toBe('direct_self_dispatch');
   expect(c.dispatch({sourceTask:'supervisor',leaseToken:s,target:'worker',dedupKey:'other',reason:'work'}).accepted).toBe(true);
  });
- it('rejects same-causal-root ping-pong without new progress',async()=>{
+ it('allows same-root cross-chat returns without pretending to measure progress',async()=>{
   const {c}=await setup();const r=external(c),s=claim(c,'supervisor',r.dispatchId!);
   const w=c.dispatch({sourceTask:'supervisor',leaseToken:s,target:'worker',dedupKey:'w',reason:'work'});
   c.finish({task:'supervisor',leaseToken:s,outcome:'idle'});const wt=claim(c,'worker',w.dispatchId!);
-  expect(c.dispatch({sourceTask:'worker',leaseToken:wt,target:'supervisor',dedupKey:'bounce',reason:'empty ping'}).reason).toBe('no_progress_cycle');
+  const returned=c.dispatch({sourceTask:'worker',leaseToken:wt,target:'supervisor',dedupKey:'bounce',reason:'review the negative result'});
+  expect(returned.accepted).toBe(true);expect(returned.warnings).toContain('same_root_checkpoint_unchanged_advisory');
  });
- it('allows a cross-chat return when the target has genuinely advanced its checkpoint',async()=>{
+ it('allows a cross-chat return with a different reported checkpoint reference',async()=>{
   const {c}=await setup();const r=external(c),s=claim(c,'supervisor',r.dispatchId!);
   const w=c.dispatch({sourceTask:'supervisor',leaseToken:s,target:'worker',dedupKey:'w',reason:'work'});
   c.finish({task:'supervisor',leaseToken:s,outcome:'idle',checkpoint:'review-state:1'});const wt=claim(c,'worker',w.dispatchId!);
@@ -143,3 +144,16 @@ it('allows the same external tick key to retry after a definitive rejection was 
  c.synchronizeDeliveryOutcomes();const second=external(c,'same-clock-slot');
  expect(second.accepted).toBe(true);expect(second.dispatchId).not.toBe(first.dispatchId);expect(second.rootId).toBe(first.rootId);
 });
+
+ it('allows 40 sequential same-root cross-chat turns with no checkpoint change',async()=>{
+  const {c}=await setup();const first=external(c,'one-root');let task='supervisor',token=claim(c,task,first.dispatchId!);
+  for(let i=0;i<40;i++) {
+   const target=task==='supervisor'?'worker':'supervisor';
+   const d=c.dispatch({sourceTask:task,leaseToken:token,target,dedupKey:'exchange',reason:'review or test result ready'});
+   expect(d.accepted).toBe(true);expect(d.rootId).toBe(first.rootId);
+   c.finish({task,leaseToken:token,outcome:'idle'});task=target;token=claim(c,task,d.dispatchId!);
+  }
+  c.finish({task,leaseToken:token,outcome:'idle'});
+  expect(c.status().counts.totalRuns).toBe(41);
+  expect(c.status().workflows.every(w=>w.revision===0)).toBe(true);
+ });

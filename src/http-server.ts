@@ -14,6 +14,7 @@ import type { RequestLedger } from "./request-ledger.js";
 import { createMcpProtocolServer } from "./server.js";
 import { EventRuntime } from "./events.js";
 import { WorkflowCoordinator } from "./workflows.js";
+import { ProcessWaitDriver } from './process-waits.js';
 
 const MODERN_PROTOCOL_VERSION = "2026-07-28";
 
@@ -76,8 +77,14 @@ export function createHttpMcpServer(options: HttpMcpServerOptions): HttpMcpServe
       onerror: (error) => reportHandlerError("mcp_http_handler_error", error),
     },
   );
-  // One bounded attempt per due delivery. SQLite claims prevent concurrent
-  // CLI/HTTP emitters from concurrently sending the same row.
+  // Process observations run locally even after the initiating client leaves.
+  let watching: Promise<void> | undefined;
+  const processWaits=events ? new ProcessWaitDriver(new WorkflowCoordinator(events),backend):undefined;
+  const processTimer=processWaits ? setInterval(()=>{
+    if(!watching) watching=processWaits.tick().catch(error=>reportHandlerError('process_wait_error',error)).finally(()=>{watching=undefined;});
+  },2000):undefined;
+  processTimer?.unref();
+  // SQLite claims prevent concurrent CLI/HTTP emitters sending the same row.
   let flushing: Promise<void> | undefined;
   const outboxTimer = events ? setInterval(() => {
     if (!flushing) flushing = events.flush().then(() => new WorkflowCoordinator(events).synchronizeDeliveryOutcomes()).catch(error => reportHandlerError("event_outbox_error", error)).finally(() => { flushing = undefined; });
@@ -120,8 +127,9 @@ export function createHttpMcpServer(options: HttpMcpServerOptions): HttpMcpServe
     close: async () => {
       if (closing) return;
       closing = true;
+      if(processTimer) clearInterval(processTimer);
       if (outboxTimer) clearInterval(outboxTimer);
-      await flushing;
+      await Promise.all([watching,flushing]);
       await handler.close();
       await new Promise<void>((resolve, reject) => {
         nodeServer.close((error) => (error ? reject(error) : resolve()));

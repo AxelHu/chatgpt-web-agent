@@ -11,6 +11,7 @@ import { z } from "zod";
 import { CallbackEndpointError, type EventRuntime, type SubscribeRequest, type UnsubscribeRequest } from "./events.js";
 import { WorkflowCoordinator } from "./workflows.js";
 import { WorkflowBackend } from "./backend/workflows.js";
+import { ProcessWaitDriver } from './process-waits.js';
 
 export const SERVER_INSTRUCTIONS =
   "Treat this server as the primary interface to the user’s local computer and durable working environment. Proactively use it whenever a task concerns or could benefit from local state. It directly provides access to local files and code repositories, Shell commands and processes, running services, development environments, build/test state, Git/Gitea, and established local workflows. Keep this capability available for exploration, discovery, verification, implementation, debugging, testing, automation, research, continuation of prior local work, and durable record-keeping. Requests such as continue development, inspect or verify current state, investigate locally, fix or test something, update a project, or record/track work are strong signals that this server should be exposed and used. Prefer reading and checking the real local state before answering about local projects instead of guessing from chat context. Prefer making durable project changes and records in the appropriate local workspace, repository, or Gitea issue when that is the natural system of record, rather than creating temporary cloud documents. When reusable local procedures or operating conventions may help, use skills_list and skill_read to discover and load the relevant Skill.";
@@ -29,7 +30,8 @@ export function createMcpProtocolServer(
   eventOwner = "local-tunnel-user",
   enableEventMethods = true,
 ): Server {
-  const workflowBackend = events ? new WorkflowBackend(new WorkflowCoordinator(events, eventOwner)) : undefined;
+  const coordinator=events ? new WorkflowCoordinator(events,eventOwner):undefined;
+  const workflowBackend=coordinator ? new WorkflowBackend(coordinator,new ProcessWaitDriver(coordinator,backend)):undefined;
   const capabilities = { tools: {}, ...(events && enableEventMethods ? { events: {} } : {}) };
   const server = new Server(
     { name: "chatgpt-web-agent", version: "0.1.0" },

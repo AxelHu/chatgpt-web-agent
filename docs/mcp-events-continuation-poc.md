@@ -164,3 +164,17 @@ After enabling the event surface in the production WebAgentTools service:
 
 That final ChatGPT callback test is intentionally not claimed by the local
 unit/integration suite.
+
+## 2026-09-30 follow-up: progress is not a gate
+
+The original checkpoint-unchanged hard cycle check is removed. A cross-chat return
+with the same causal root and unchanged checkpoint gets an advisory only. Direct
+self-dispatch, request deduplication, and concurrency fencing remain. Revision is
+an opaque checkpoint-reference version, not a measure of semantic progress.
+
+Long-running processes are now supported by the HTTP service's durable local
+ProcessWaitDriver. Register an idle workflow with workflow_manage/watch_process,
+or yield an active leased run with workflow_run/wait_process. It observes the
+existing process session through non-consuming process.log and queues exactly one
+logical continuation on a confirmed terminal receipt. Cloud receipt and a real
+new Chat run still need separate OpenAI acceptance.
