@@ -303,3 +303,15 @@ action，因此不会在目标账号缺失时借用 `main` 或其他 agent 身�
 ## 模型发布接入记录
 
 [MiniMax M3.1 Flash：本机部署、跨仓库支持、冻结指纹与验证边界](docs/minimax31-release-20260928/README.md)。
+
+## Local events to ordinary Chat (no model relay)
+
+For local processes and existing local schedulers, the opt-in
+`node dist/local-chat-cli.js` entrypoint provides a durable local inbox and calls
+the already installed Desktop Bridge directly. It does not create an OpenAI Task,
+MCP webhook subscription, or intermediate model conversation. Targets, model,
+thinking, and prompt are fixed by an operator-owned route configuration; event
+data cannot override them. No routes or timers are enabled by installation.
+
+See [the v1 design, CLI usage, verified direct runs, and limits](docs/mcp-events/local-desktop-continuation-v1.md).
+The existing native MCP Events and `workflow_*` surface is retained unchanged.
