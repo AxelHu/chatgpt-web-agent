@@ -43,6 +43,9 @@ async function main(): Promise<void> {
   });
   process.stdout.write(`${JSON.stringify(result)}\n`);
   if (result.failed.length > 0) process.exitCode = 1;
+  else if (result.matched === 0) process.exitCode = 3;
+  else if (result.pending > 0) process.exitCode = 4;
+  runtime.close();
 }
 
 main().catch((error) => {

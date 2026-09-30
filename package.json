@@ -7,7 +7,8 @@
     "chatgpt-web-agent": "dist/cli.js",
     "chatgpt-web-agent-event": "dist/event-cli.js",
     "chatgpt-web-agent-exec-runtime": "dist/exec-runtime-cli.js",
-    "chatgpt-web-agent-http": "dist/http-cli.js"
+    "chatgpt-web-agent-http": "dist/http-cli.js",
+    "chatgpt-web-agent-workflow": "dist/workflow-cli.js"
   },
   "files": [
     "dist",

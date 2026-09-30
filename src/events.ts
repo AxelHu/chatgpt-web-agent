@@ -1,11 +1,11 @@
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
-import { promises as dns } from "node:dns";
-import { promises as fs } from "node:fs";
-import https from "node:https";
 import os from "node:os";
 import path from "node:path";
-import ipaddr from "ipaddr.js";
+import fs from "node:fs";
 import { Webhook } from "standardwebhooks";
+import { z } from "zod";
+import { StateDatabase } from "./state-db.js";
+import { pinnedHttpsPost, resolvePublicCallback, type CallbackResponse } from "./event-network.js";
 
 export const CONTINUE_EVENT_NAME = "workflow.continue";
 
@@ -49,6 +49,11 @@ export const EVENT_DEFINITIONS = [
           type: "string",
           description: "Optional producer label such as process, timer, codex, git, or research.",
         },
+        dispatch_id: { type: "string" },
+        root_id: { type: "string" },
+        source_task: { type: "string" },
+        target_task: { type: "string" },
+        progress_version: { type: "integer", minimum: 0 },
         sequence: {
           type: "integer",
           minimum: 0,
@@ -68,400 +73,215 @@ export type ContinueEventData = {
   state_ref?: string;
   source?: string;
   sequence?: number;
+  dispatch_id?: string;
+  root_id?: string;
+  source_task?: string;
+  target_task?: string;
+  progress_version?: number;
 };
 
-export type EventDelivery = {
-  mode: "webhook";
-  url: string;
-  secret: string;
-};
-
+export type EventDelivery = { mode: 'webhook'; url: string; secret: string };
 export type EventSubscription = {
-  id: string;
-  owner: string;
-  name: string;
-  arguments: Record<string, unknown>;
-  delivery: EventDelivery;
-  createdAt: string;
-  updatedAt: string;
-  refreshBefore: string | null;
+  id: string; owner: string; name: string; arguments: Record<string, unknown>;
+  delivery: EventDelivery; createdAt: string; updatedAt: string; refreshBefore: string | null;
+  verifiedAt?: number; previousSecret?: string; previousSecretUntil?: number;
+  disabled?: boolean;
 };
-
-type EventStoreFile = {
-  version: 1;
-  subscriptions: EventSubscription[];
+export type SubscribeRequest = { name: string; arguments?: Record<string, unknown>; delivery: EventDelivery; cursor?: string | null; ttlMs?: number | null };
+export type UnsubscribeRequest = { name: string; arguments?: Record<string, unknown>; delivery: Pick<EventDelivery, 'mode' | 'url'> };
+export type EventDeliveryResponse = CallbackResponse;
+export type EventWebhookSender = (subscription: EventSubscription, body: string, headers: Record<string,string>) => Promise<CallbackResponse>;
+export type EventRuntimeOptions = { storePath?: string; sender?: EventWebhookSender; validateCallback?: (url: string) => Promise<void>; now?: () => Date; db?: StateDatabase };
+export type OutboxDelivery = {
+  key: string; eventId: string; subscriptionId: string; body: string;
+  state: 'pending' | 'sending' | 'accepted' | 'failed' | 'cancelled';
+  attempts: number; nextAttemptAt: number; claimUntil?: number; claimId?: string;
+  ambiguousAttempts?: number;
+  status?: number; error?: string;
 };
-
-export type SubscribeRequest = {
-  name: string;
-  arguments?: Record<string, unknown>;
-  delivery: EventDelivery;
-  cursor?: string | null;
-  ttlMs?: number | null;
-};
-
-export type UnsubscribeRequest = {
-  name: string;
-  arguments?: Record<string, unknown>;
-  delivery: Pick<EventDelivery, "mode" | "url">;
-};
-
-export type EventDeliveryResponse = {
-  ok: boolean;
-  status: number;
-  body: string;
-};
-
-export type EventWebhookSender = (
-  subscription: EventSubscription,
-  body: string,
-  headers: Record<string, string>,
-) => Promise<EventDeliveryResponse>;
-
-export type EventRuntimeOptions = {
-  storePath?: string;
-  sender?: EventWebhookSender;
-  validateCallback?: (url: string) => Promise<void>;
-  now?: () => Date;
-};
-
+export class CallbackEndpointError extends Error {
+  readonly code = -32015;
+  constructor(readonly reason: string) { super('Callback verification failed'); this.name = 'CallbackEndpointError'; }
+}
+const dataSchema = z.object({
+  topic: z.string().min(1).max(200), trigger_reason: z.string().min(1).max(2000),
+  summary: z.string().max(8000).optional(), state_ref: z.string().max(2000).optional(),
+  source: z.string().max(200).optional(), sequence: z.number().int().nonnegative().optional(),
+  dispatch_id: z.string().optional(), root_id: z.string().optional(),
+  source_task: z.string().optional(), target_task: z.string().optional(),
+  progress_version: z.number().int().nonnegative().optional(),
+}).strict();
 function defaultStorePath(): string {
   const explicit = process.env.CHATGPT_WEB_AGENT_EVENT_STORE?.trim();
-  if (explicit) return path.resolve(explicit);
-  const stateHome = process.env.XDG_STATE_HOME?.trim();
-  return path.join(stateHome ? path.resolve(stateHome) : path.join(os.homedir(), ".local", "state"), "chatgpt-web-agent", "events.json");
+  return explicit ? path.resolve(explicit) : path.join(process.env.XDG_STATE_HOME || path.join(os.homedir(), '.local', 'state'), 'chatgpt-web-agent', 'events.sqlite');
 }
-
-function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  const entries = Object.entries(value as Record<string, unknown>)
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([key, child]) => `${JSON.stringify(key)}:${canonicalJson(child)}`);
-  return `{${entries.join(",")}}`;
+export function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return '[' + value.map(canonicalJson).join(',') + ']';
+  return '{' + Object.keys(value).sort().map(k => JSON.stringify(k) + ':' + canonicalJson((value as Record<string,unknown>)[k])).join(',') + '}';
 }
-
-function deterministicSubscriptionId(
-  owner: string,
-  callbackUrl: string,
-  name: string,
-  args: Record<string, unknown>,
-): string {
-  const digest = createHash("sha256")
-    .update(owner)
-    .update("\n")
-    .update(callbackUrl)
-    .update("\n")
-    .update(name)
-    .update("\n")
-    .update(canonicalJson(args))
-    .digest("hex");
-  return `sub_${digest.slice(0, 32)}`;
+function identity(owner: string, url: string, name: string, args: Record<string,unknown>): string {
+  return 'sub_' + createHash('sha256').update(canonicalJson([owner,url,name,args])).digest('hex').slice(0,32);
 }
-
-function validateSecret(secret: string): void {
-  if (!secret.startsWith("whsec_")) throw new Error("webhook secret must start with whsec_");
-  let decoded: Buffer;
-  try {
-    decoded = Buffer.from(secret.slice("whsec_".length), "base64");
-  } catch {
-    throw new Error("webhook secret is not valid base64");
-  }
-  if (decoded.length < 24 || decoded.length > 64) {
-    throw new Error("webhook secret must decode to 24-64 bytes");
-  }
+export function validateSecret(secret: string): void {
+  if (!/^whsec_[A-Za-z0-9+/]+={0,2}$/.test(secret)) throw new Error('invalid_webhook_secret');
+  const encoded = secret.slice(6); const bytes = Buffer.from(encoded, 'base64');
+  if (bytes.length < 24 || bytes.length > 64 || bytes.toString('base64').replace(/=+$/, '') !== encoded.replace(/=+$/, '')) throw new Error('invalid_webhook_secret');
 }
-
-function isPublicAddress(address: string): boolean {
-  try {
-    return ipaddr.parse(address).range() === "unicast";
-  } catch {
-    return false;
-  }
+function topicArgs(name: string, args: Record<string,unknown>): { topic: string } {
+  if (name !== CONTINUE_EVENT_NAME) throw new Error('unsupported_event');
+  return z.object({ topic: z.string().trim().min(1).max(200) }).strict().parse(args);
 }
-
-async function resolvePublicCallback(urlValue: string): Promise<{ url: URL; addresses: Array<{ address: string; family: number }> }> {
-  const url = new URL(urlValue);
-  if (url.protocol !== "https:") throw new Error("callback URL must use https");
-  if (url.username || url.password) throw new Error("callback URL must not contain credentials");
-  if (url.hash) throw new Error("callback URL must not contain a fragment");
-  const literal = ipaddr.isValid(url.hostname.replace(/^\[|\]$/g, ""));
-  const addresses = literal
-    ? [{ address: url.hostname.replace(/^\[|\]$/g, ""), family: ipaddr.parse(url.hostname.replace(/^\[|\]$/g, "")).kind() === "ipv4" ? 4 : 6 }]
-    : await dns.lookup(url.hostname, { all: true, verbatim: true });
-  if (addresses.length === 0 || addresses.some((entry) => !isPublicAddress(entry.address))) {
-    throw new Error("callback URL resolves to a non-public address");
-  }
-  return { url, addresses };
+function equalText(a: string,b: string): boolean {
+  const x=Buffer.from(a),y=Buffer.from(b); return x.length===y.length && timingSafeEqual(x,y);
 }
-
-async function pinnedHttpsPost(
-  urlValue: string,
-  body: string,
-  headers: Record<string, string>,
-): Promise<EventDeliveryResponse> {
-  const { url, addresses } = await resolvePublicCallback(urlValue);
-  let lastError: unknown;
-  for (const target of addresses) {
-    try {
-      return await new Promise<EventDeliveryResponse>((resolve, reject) => {
-        const request = https.request(
-          {
-            protocol: "https:",
-            hostname: url.hostname,
-            port: url.port || 443,
-            path: `${url.pathname}${url.search}`,
-            method: "POST",
-            servername: url.hostname,
-            headers: {
-              ...headers,
-              "content-length": String(Buffer.byteLength(body, "utf8")),
-            },
-            lookup: ((_hostname: string, _options: unknown, callback: (error: NodeJS.ErrnoException | null, address: string, family: number) => void) => {
-              callback(null, target.address, target.family);
-            }) as never,
-            timeout: 10_000,
-          },
-          (response) => {
-            const chunks: Buffer[] = [];
-            response.on("data", (chunk: Buffer | string) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
-            response.on("end", () => {
-              const status = response.statusCode ?? 0;
-              resolve({
-                ok: status >= 200 && status < 300,
-                status,
-                body: Buffer.concat(chunks).toString("utf8"),
-              });
-            });
-          },
-        );
-        request.on("timeout", () => request.destroy(new Error("callback timeout")));
-        request.on("error", reject);
-        request.end(body);
-      });
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  throw lastError instanceof Error ? lastError : new Error("callback delivery failed");
-}
-
-async function readStore(storePath: string): Promise<EventStoreFile> {
-  try {
-    const parsed = JSON.parse(await fs.readFile(storePath, "utf8")) as Partial<EventStoreFile>;
-    return {
-      version: 1,
-      subscriptions: Array.isArray(parsed.subscriptions) ? parsed.subscriptions as EventSubscription[] : [],
-    };
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { version: 1, subscriptions: [] };
-    throw error;
-  }
-}
-
-async function writeStore(storePath: string, store: EventStoreFile): Promise<void> {
-  const dir = path.dirname(storePath);
-  await fs.mkdir(dir, { recursive: true, mode: 0o700 });
-  const temp = `${storePath}.${process.pid}.${randomUUID()}.tmp`;
-  await fs.writeFile(temp, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
-  await fs.rename(temp, storePath);
-  await fs.chmod(storePath, 0o600);
-}
-
-function parseTopic(args: Record<string, unknown>): string {
-  if (Object.keys(args).some((key) => key !== "topic")) throw new Error("workflow.continue only accepts the topic filter");
-  const topic = args.topic;
-  if (typeof topic !== "string" || topic.trim().length === 0 || topic.length > 200) {
-    throw new Error("workflow.continue requires a non-empty topic no longer than 200 characters");
-  }
-  return topic;
-}
-
-function validateEventName(name: string): void {
-  if (name !== CONTINUE_EVENT_NAME) throw new Error(`unsupported event: ${name}`);
-}
-
-function safeEqualText(a: string, b: string): boolean {
-  const left = Buffer.from(a);
-  const right = Buffer.from(b);
-  return left.length === right.length && timingSafeEqual(left, right);
-}
-
 export class EventRuntime {
-  readonly storePath: string;
-  readonly sender: EventWebhookSender;
-  readonly validateCallback: (url: string) => Promise<void>;
-  readonly now: () => Date;
-
+  readonly storePath: string; readonly db: StateDatabase;
+  readonly sender: EventWebhookSender; readonly now: () => Date;
+  readonly validateCallback: (url:string) => Promise<void>;
   constructor(options: EventRuntimeOptions = {}) {
     this.storePath = options.storePath ?? defaultStorePath();
-    this.sender = options.sender ?? (async (subscription, body, headers) =>
-      pinnedHttpsPost(subscription.delivery.url, body, headers));
-    this.validateCallback = options.validateCallback ?? (async (url) => {
-      await resolvePublicCallback(url);
-    });
+    // Never silently strand subscriptions from the pre-SQLite default.
+    if (!options.db && !fs.existsSync(this.storePath) && path.basename(this.storePath) === 'events.sqlite') {
+      const oldDefault = path.join(path.dirname(this.storePath), 'events.json');
+      if (fs.existsSync(oldDefault)) throw new Error('legacy_json_store_requires_migration');
+    }
+    // A pre-existing JSON PoC store must be migrated explicitly, never replaced.
+    if (!options.db && fs.existsSync(this.storePath)) {
+      const fd = fs.openSync(this.storePath, 'r'); const head = Buffer.alloc(16);
+      try { fs.readSync(fd, head, 0, 16, 0); } finally { fs.closeSync(fd); }
+      if (head.toString().trimStart().startsWith('{')) throw new Error('legacy_json_store_requires_migration');
+    }
+    this.db = options.db ?? new StateDatabase(this.storePath);
+    this.sender = options.sender ?? ((subscription,body,headers) => pinnedHttpsPost(subscription.delivery.url,body,headers));
+    this.validateCallback = options.validateCallback ?? (async url => { await resolvePublicCallback(url); });
     this.now = options.now ?? (() => new Date());
   }
-
-  list() {
-    return { events: EVENT_DEFINITIONS };
+  list() { return { events: EVENT_DEFINITIONS }; }
+  private active(sub: EventSubscription): boolean { return !sub.disabled && (sub.refreshBefore === null || Date.parse(sub.refreshBefore) > this.now().getTime()); }
+  activeSubscriptions(topic: string, owner = 'local-tunnel-user'): EventSubscription[] {
+    return this.db.all<EventSubscription>('subscriptions').filter(s => s.owner === owner && s.arguments.topic === topic && this.active(s));
   }
-
+  async subscriptions(): Promise<EventSubscription[]> { return this.db.all('subscriptions'); }
+  subscriptionSummaries() {
+    return this.db.all<EventSubscription>('subscriptions').map(s => ({ id:s.id,owner:s.owner,name:s.name,arguments:s.arguments,refreshBefore:s.refreshBefore,active:this.active(s) }));
+  }
+  private headers(sub: EventSubscription, id: string, body: string): Record<string,string> {
+    const date = this.now(); const signatures = [new Webhook(sub.delivery.secret).sign(id,date,body)];
+    if (sub.previousSecret && (sub.previousSecretUntil ?? 0) > date.getTime()) signatures.push(new Webhook(sub.previousSecret).sign(id,date,body));
+    return { 'content-type':'application/json','webhook-id':id,'webhook-timestamp':String(Math.floor(date.getTime()/1000)), 'webhook-signature':signatures.join(' '),'X-MCP-Subscription-Id':sub.id };
+  }
   async subscribe(owner: string, request: SubscribeRequest) {
-    validateEventName(request.name);
-    const args = request.arguments ?? {};
-    parseTopic(args);
-    if (request.delivery?.mode !== "webhook") throw new Error("only webhook delivery is supported");
+    const args=topicArgs(request.name,request.arguments ?? {});
+    if (request.delivery?.mode !== 'webhook') throw new Error('unsupported_delivery');
     validateSecret(request.delivery.secret);
-    await this.validateCallback(request.delivery.url);
-
-    const id = deterministicSubscriptionId(owner, request.delivery.url, request.name, args);
-    const verificationId = `msg_verification_${randomUUID()}`;
-    const challenge = randomUUID();
-    const verificationBody = JSON.stringify({ type: "verification", challenge });
-    const signedAt = this.now();
-    const signer = new Webhook(request.delivery.secret);
-    const verification = await this.sender(
-      {
-        id,
-        owner,
-        name: request.name,
-        arguments: args,
-        delivery: request.delivery,
-        createdAt: signedAt.toISOString(),
-        updatedAt: signedAt.toISOString(),
-        refreshBefore: null,
-      },
-      verificationBody,
-      {
-        "content-type": "application/json",
-        "webhook-id": verificationId,
-        "webhook-timestamp": String(Math.floor(signedAt.getTime() / 1000)),
-        "webhook-signature": signer.sign(verificationId, signedAt, verificationBody),
-        "X-MCP-Subscription-Id": id,
-      },
-    );
-    if (!verification.ok) throw new Error(`callback verification returned HTTP ${verification.status}`);
-    let echoed: unknown;
-    try {
-      echoed = JSON.parse(verification.body);
-    } catch {
-      throw new Error("callback verification returned invalid JSON");
+    const ttl=request.ttlMs;
+    if (ttl !== null && ttl !== undefined && (!Number.isSafeInteger(ttl) || ttl < 0)) throw new Error('invalid_ttl');
+    const id=identity(owner,request.delivery.url,request.name,args);
+    const cancelEpoch=this.db.get<number>('subscription-cancel-epochs',id)??0;
+    try { await this.validateCallback(request.delivery.url); } catch { throw new CallbackEndpointError('invalid_url'); }
+    const now=this.now(); const prior=this.db.get<EventSubscription>('subscriptions',id);
+    const candidate: EventSubscription={id,owner,name:request.name,arguments:args,delivery:request.delivery,
+      createdAt:prior?.createdAt ?? now.toISOString(),updatedAt:now.toISOString(),
+      refreshBefore:ttl===null ? null : new Date(now.getTime()+Math.max(60_000,ttl ?? 30*86400_000)).toISOString()};
+    const cacheHit = prior && !prior.disabled && prior.delivery.secret===candidate.delivery.secret && now.getTime()-(prior.verifiedAt ?? 0)<300_000;
+    if (!cacheHit) {
+      const challenge=randomUUID(),verificationId='verify_'+randomUUID();
+      const body=JSON.stringify({type:'verification',challenge});
+      let response: CallbackResponse;
+      try { response=await this.sender(candidate,body,this.headers(candidate,verificationId,body)); }
+      catch { throw new CallbackEndpointError('timeout'); }
+      if (!response.ok) throw new CallbackEndpointError('challenge_failed');
+      let echoed: unknown;
+      try { echoed=JSON.parse(response.body); } catch { throw new CallbackEndpointError('challenge_failed'); }
+      const text=(echoed as {challenge?:unknown})?.challenge;
+      if (typeof text!=='string' || !equalText(challenge,text)) throw new CallbackEndpointError('challenge_failed');
     }
-    const echoedChallenge = (echoed as { challenge?: unknown })?.challenge;
-    if (typeof echoedChallenge !== "string" || !safeEqualText(echoedChallenge, challenge)) {
-      throw new Error("callback verification challenge mismatch");
+    candidate.verifiedAt=cacheHit ? prior.verifiedAt : now.getTime();
+    if (prior?.delivery.secret && prior.delivery.secret!==candidate.delivery.secret) {
+      candidate.previousSecret=prior.delivery.secret; candidate.previousSecretUntil=now.getTime()+300_000;
+    } else if (prior?.previousSecret && (prior.previousSecretUntil ?? 0)>now.getTime()) {
+      candidate.previousSecret=prior.previousSecret; candidate.previousSecretUntil=prior.previousSecretUntil;
     }
-
-    const requestedTtl = request.ttlMs;
-    const now = this.now();
-    const refreshBefore = requestedTtl === null
-      ? null
-      : new Date(now.getTime() + Math.max(60_000, requestedTtl ?? 30 * 24 * 60 * 60 * 1000)).toISOString();
-    const store = await readStore(this.storePath);
-    const existing = store.subscriptions.find((entry) => entry.id === id);
-    const next: EventSubscription = {
-      id,
-      owner,
-      name: request.name,
-      arguments: args,
-      delivery: request.delivery,
-      createdAt: existing?.createdAt ?? now.toISOString(),
-      updatedAt: now.toISOString(),
-      refreshBefore,
-    };
-    store.subscriptions = [...store.subscriptions.filter((entry) => entry.id !== id), next];
-    await writeStore(this.storePath, store);
-    return { id, refreshBefore, cursor: null, truncated: false };
+    // The write is a row-level upsert; parallel callbacks cannot erase peers.
+    this.db.atomic(() => {
+      if((this.db.get<number>('subscription-cancel-epochs',id)??0)!==cancelEpoch) throw new Error('subscription_cancelled_during_verification');
+      this.db.put('subscriptions',id,candidate);
+    });
+    return {id,refreshBefore:candidate.refreshBefore,cursor:null,truncated:false};
   }
-
-  async unsubscribe(owner: string, request: UnsubscribeRequest): Promise<Record<string, never>> {
-    validateEventName(request.name);
-    const args = request.arguments ?? {};
-    parseTopic(args);
-    if (request.delivery?.mode !== "webhook") throw new Error("only webhook delivery is supported");
-    const id = deterministicSubscriptionId(owner, request.delivery.url, request.name, args);
-    const store = await readStore(this.storePath);
-    store.subscriptions = store.subscriptions.filter((entry) => entry.id !== id || entry.owner !== owner);
-    await writeStore(this.storePath, store);
+  async unsubscribe(owner:string,request:UnsubscribeRequest): Promise<Record<string,never>> {
+    const args=topicArgs(request.name,request.arguments ?? {});
+    if (request.delivery?.mode!=='webhook') throw new Error('unsupported_delivery');
+    const id=identity(owner,request.delivery.url,request.name,args);
+    this.db.atomic(() => {
+      this.db.put('subscription-cancel-epochs',id,(this.db.get<number>('subscription-cancel-epochs',id)??0)+1);
+      this.db.remove('subscriptions',id);
+      for (const d of this.db.all<OutboxDelivery>('outbox')) if(d.subscriptionId===id && (d.state==='pending'||d.state==='sending')) this.db.put('outbox',d.key,{...d,state:'cancelled'});
+    });
     return {};
   }
-
-  async subscriptions(): Promise<EventSubscription[]> {
-    const store = await readStore(this.storePath);
-    return store.subscriptions;
-  }
-
-  async emitContinue(data: ContinueEventData): Promise<{
-    eventId: string;
-    matched: number;
-    delivered: number;
-    failed: Array<{ subscriptionId: string; status?: number; error?: string }>;
-  }> {
-    parseTopic({ topic: data.topic });
-    if (typeof data.trigger_reason !== "string" || data.trigger_reason.trim().length === 0) {
-      throw new Error("trigger_reason is required");
-    }
-    const eventId = `evt_${randomUUID()}`;
-    const timestamp = this.now().toISOString();
-    const eventBody = JSON.stringify({
-      eventId,
-      name: CONTINUE_EVENT_NAME,
-      timestamp,
-      data,
-      cursor: null,
-    });
-    if (Buffer.byteLength(eventBody, "utf8") > 256 * 1024) {
-      throw new Error("event payload exceeds 256 KiB");
-    }
-
-    const store = await readStore(this.storePath);
-    const nowMs = this.now().getTime();
-    const active = store.subscriptions.filter((entry) =>
-      entry.name === CONTINUE_EVENT_NAME &&
-      entry.arguments.topic === data.topic &&
-      (entry.refreshBefore === null || Date.parse(entry.refreshBefore) > nowMs));
-    const failed: Array<{ subscriptionId: string; status?: number; error?: string }> = [];
-    let delivered = 0;
-
-    for (const subscription of active) {
-      const signer = new Webhook(subscription.delivery.secret);
-      let deliveredThisSubscription = false;
-      for (let attempt = 0; attempt < 4; attempt += 1) {
-        const signedAt = this.now();
-        try {
-          const response = await this.sender(subscription, eventBody, {
-            "content-type": "application/json",
-            "webhook-id": eventId,
-            "webhook-timestamp": String(Math.floor(signedAt.getTime() / 1000)),
-            "webhook-signature": signer.sign(eventId, signedAt, eventBody),
-            "X-MCP-Subscription-Id": subscription.id,
-          });
-          if (response.ok) {
-            delivered += 1;
-            deliveredThisSubscription = true;
-            break;
-          }
-          if (response.status === 410 || response.status === 413 || response.status < 500) {
-            failed.push({ subscriptionId: subscription.id, status: response.status });
-            break;
-          }
-          if (attempt === 3) failed.push({ subscriptionId: subscription.id, status: response.status });
-        } catch (error) {
-          if (attempt === 3) {
-            failed.push({
-              subscriptionId: subscription.id,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          }
+  enqueueContinue(data:ContinueEventData,options:{eventId?:string;subscriptionId?:string;owner?:string}={}) {
+    const validated=dataSchema.parse(data); const eventId=options.eventId ?? 'evt_'+randomUUID();
+    const body=JSON.stringify({eventId,name:CONTINUE_EVENT_NAME,timestamp:this.now().toISOString(),data:validated,cursor:null});
+    if(Buffer.byteLength(body)>262144) throw new Error('event_too_large');
+    return this.db.atomic(() => {
+      const subs=this.db.all<EventSubscription>('subscriptions').filter(s => this.active(s) && s.arguments.topic===data.topic && (!options.subscriptionId||s.id===options.subscriptionId) && (!options.owner||s.owner===options.owner));
+      for(const sub of subs) {
+        const key=eventId+':'+sub.id; const existing=this.db.get<OutboxDelivery>('outbox',key);
+        if(existing) {
+          if(canonicalJson(JSON.parse(existing.body).data)!==canonicalJson(validated)) throw new Error('event_id_conflict');
+          continue;
         }
-        if (!deliveredThisSubscription && attempt < 3) {
-          await new Promise((resolve) => setTimeout(resolve, 250 * (2 ** attempt)));
-        }
+        this.db.put<OutboxDelivery>('outbox',key,{key,eventId,subscriptionId:sub.id,body,state:'pending',attempts:0,nextAttemptAt:this.now().getTime()});
       }
-    }
-
-    return { eventId, matched: active.length, delivered, failed };
+      return {eventId,matched:subs.length};
+    });
   }
+  async emitContinue(data:ContinueEventData,options:{eventId?:string;subscriptionId?:string;owner?:string}={}) {
+    const result=this.enqueueContinue(data,options); await this.flush(result.eventId);
+    const deliveries=this.db.db.prepare("SELECT value FROM objects WHERE bucket='outbox' AND json_extract(value,'$.eventId')=?").all(result.eventId).map(row=>JSON.parse(String(row.value)) as OutboxDelivery);
+    return {...result,delivered:deliveries.filter(d=>d.state==='accepted').length,pending:deliveries.filter(d=>d.state==='pending'||d.state==='sending').length,
+      failed:deliveries.filter(d=>d.state==='failed'||d.state==='cancelled').map(d=>({subscriptionId:d.subscriptionId,status:d.status,error:d.error}))};
+  }
+  async flush(eventId?:string): Promise<void> {
+    const now=this.now().getTime();
+    const due=this.db.db.prepare(`SELECT value FROM objects WHERE bucket='outbox'
+      AND (json_extract(value,'$.state')='pending' OR (json_extract(value,'$.state')='sending' AND json_extract(value,'$.claimUntil')<?))
+      AND json_extract(value,'$.nextAttemptAt')<=? AND (? IS NULL OR json_extract(value,'$.eventId')=?)
+      ORDER BY json_extract(value,'$.nextAttemptAt') LIMIT 32`).all(now,now,eventId??null,eventId??null)
+      .map(row=>JSON.parse(String(row.value)) as OutboxDelivery);
+    for(const candidate of due) {
+      const claimed=this.db.atomic(() => {
+        const d=this.db.get<OutboxDelivery>('outbox',candidate.key);
+        if(!d || (d.state!=='pending'&&!(d.state==='sending'&&(d.claimUntil ?? 0)<this.now().getTime())) || d.nextAttemptAt>this.now().getTime()) return undefined;
+        const sub=this.db.get<EventSubscription>('subscriptions',d.subscriptionId);
+        if(!sub||!this.active(sub)) { this.db.put('outbox',d.key,{...d,state:'cancelled',error:'subscription_inactive'}); return undefined; }
+        const next:OutboxDelivery={...d,state:'sending',attempts:d.attempts+1,ambiguousAttempts:(d.ambiguousAttempts??0)+(d.state==='sending'?1:0),claimUntil:this.now().getTime()+30_000,claimId:randomUUID()};
+        this.db.put('outbox',d.key,next); return {delivery:next,sub};
+      });
+      if(!claimed) continue;
+      let response:CallbackResponse|undefined; let error:string|undefined;
+      try { response=await this.sender(claimed.sub,claimed.delivery.body,this.headers(claimed.sub,claimed.delivery.eventId,claimed.delivery.body)); }
+      catch { error='transport_error'; }
+      this.db.atomic(() => {
+        const current=this.db.get<OutboxDelivery>('outbox',candidate.key);
+        if(!current||current.state!=='sending'||current.claimId!==claimed.delivery.claimId) return;
+        const ambiguous=!response||response.status===408||response.status>=500;
+        const ambiguousAttempts=(current.ambiguousAttempts??0)+(ambiguous?1:0);
+        const transient=ambiguous||response?.status===429;
+        const state:OutboxDelivery['state']=response?.ok?'accepted':transient&&current.attempts<6?'pending':'failed';
+        this.db.put('outbox',current.key,{...current,state,status:response?.status,error,ambiguousAttempts,nextAttemptAt:this.now().getTime()+Math.max(Math.min(response?.retryAfterMs??0,86400_000),1000*2**(current.attempts-1))});
+        if(response?.status===410) {
+          const sub=this.db.get<EventSubscription>('subscriptions',current.subscriptionId);
+          if(sub) this.db.put('subscriptions',sub.id,{...sub,disabled:true});
+        }
+      });
+    }
+  }
+  outboxSummary(eventId?:string) {
+    const rows=eventId ? this.db.db.prepare("SELECT value FROM objects WHERE bucket='outbox' AND json_extract(value,'$.eventId')=? ORDER BY rowid DESC LIMIT 100").all(eventId).map(row=>JSON.parse(String(row.value)) as OutboxDelivery) : this.db.recent<OutboxDelivery>('outbox',40);
+    return rows.map(({body,claimId,...row})=>row);
+  }
+  close():void { this.db.close(); }
 }
-

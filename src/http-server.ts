@@ -13,6 +13,7 @@ import type { FullTrace } from "./full-trace.js";
 import type { RequestLedger } from "./request-ledger.js";
 import { createMcpProtocolServer } from "./server.js";
 import { EventRuntime } from "./events.js";
+import { WorkflowCoordinator } from "./workflows.js";
 
 const MODERN_PROTOCOL_VERSION = "2026-07-28";
 
@@ -71,6 +72,13 @@ export function createHttpMcpServer(options: HttpMcpServerOptions): HttpMcpServe
       onerror: (error) => reportHandlerError("mcp_http_handler_error", error),
     },
   );
+  // One bounded attempt per due delivery. SQLite claims prevent concurrent
+  // CLI/HTTP emitters from concurrently sending the same row.
+  let flushing: Promise<void> | undefined;
+  const outboxTimer = events ? setInterval(() => {
+    if (!flushing) flushing = events.flush().then(() => new WorkflowCoordinator(events).synchronizeDeliveryOutcomes()).catch(error => reportHandlerError("event_outbox_error", error)).finally(() => { flushing = undefined; });
+  }, 2000) : undefined;
+  outboxTimer?.unref();
   const nodeHandler = toNodeHandler(handler, {
     onerror: (error) => reportHandlerError("mcp_http_adapter_error", error),
   });
@@ -108,6 +116,8 @@ export function createHttpMcpServer(options: HttpMcpServerOptions): HttpMcpServe
     close: async () => {
       if (closing) return;
       closing = true;
+      if (outboxTimer) clearInterval(outboxTimer);
+      await flushing;
       await handler.close();
       await new Promise<void>((resolve, reject) => {
         nodeServer.close((error) => (error ? reject(error) : resolve()));

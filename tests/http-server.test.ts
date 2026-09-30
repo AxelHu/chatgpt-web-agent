@@ -204,3 +204,40 @@ describe("sessionless Streamable HTTP MCP server", () => {
     await client.close();
   });
 });
+
+describe('supervisor tools across independent MCP clients (mock callback receiver)', () => {
+  it('runs external trigger → supervisor claim/dispatch → worker claim/finish through HTTP', async () => {
+    const { WorkflowCoordinator } = await import('../src/workflows.js');
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'workflow-http-chain-'));
+    const bodies: Array<Record<string, any>> = [];
+    const events = new EventRuntime({ storePath: path.join(dir, 'events.sqlite'), validateCallback: async () => {},
+      sender: async (_sub, body) => {const data = JSON.parse(body);bodies.push(data);return {ok:true,status:200,body:JSON.stringify({challenge:data.challenge})};} });
+    const mcp = createHttpMcpServer({backend:stubBackend(),events});const endpoint = await listen(mcp);
+    const connect = async (name:string) => {const client=new Client({name,version:'1'},{versionNegotiation:{mode:{pin:'2026-07-28'}}});await client.connect(new StreamableHTTPClientTransport(endpoint));return client;};
+    const supervisor=await connect('supervisor'),worker=await connect('worker');
+    const call=async(client:Client,name:string,args:Record<string,unknown>)=>{const result=await client.callTool({name,arguments:args});expect(result.isError).not.toBe(true);return result.structuredContent as any;};
+    expect((await supervisor.listTools()).tools.filter(t=>t.name.startsWith('workflow_'))).toHaveLength(4);
+    for(const [client,key] of [[supervisor,'s'],[worker,'w']] as const) {
+      await call(client,'workflow_manage',{action:'register',key,topic:'http:'+key,role:key==='s'?'supervisor':'worker'});
+      await client.request({method:'events/subscribe',params:{name:'workflow.continue',arguments:{topic:'http:'+key},delivery:{mode:'webhook',url:'https://callback.example/'+key,secret:'whsec_'+Buffer.alloc(32,4).toString('base64')},ttlMs:null}},z.object({id:z.string()}).passthrough());
+      await call(client,'workflow_manage',{action:'bind',key});
+    }
+    const root=new WorkflowCoordinator(events).external({target:'s',producer:'external-clock',dedupKey:'one-tick',reason:'time to inspect'});await events.flush(root.eventId);
+    const s=await call(supervisor,'workflow_run',{action:'claim',task:'s',dispatch_id:root.dispatchId,runner:'supervisor-chat'});
+    const d=await call(supervisor,'workflow_dispatch',{source_task:'s',lease_token:s.leaseToken,target_task:'w',dedup_key:'work1',reason:'target idle and unfinished'});
+    await call(supervisor,'workflow_run',{action:'finish',task:'s',lease_token:s.leaseToken,outcome:'idle'});await events.flush(d.eventId);
+    const w=await call(worker,'workflow_run',{action:'claim',task:'w',dispatch_id:d.dispatchId,runner:'worker-chat'});
+    await call(worker,'workflow_run',{action:'finish',task:'w',lease_token:w.leaseToken,outcome:'completed',checkpoint:'passed-http-work',summary:'mock work done'});
+    const result=await call(supervisor,'workflow_status',{task:'w'});expect(result.workflows[0].state).toBe('completed');
+    expect(bodies.filter(b=>b.name==='workflow.continue')).toHaveLength(2);
+    await supervisor.close();await worker.close();await mcp.close();events.close();await fs.rm(dir,{recursive:true,force:true});
+  });
+  it('returns the specified callback-verification error code over MCP', async()=>{
+    const dir=await fs.mkdtemp(path.join(os.tmpdir(),'workflow-http-invalid-'));
+    const events=new EventRuntime({storePath:path.join(dir,'events.sqlite'),validateCallback:async()=>{},sender:async()=>({ok:true,status:200,body:'{"challenge":"wrong"}'})});
+    const mcp=createHttpMcpServer({backend:stubBackend(),events}),endpoint=await listen(mcp);
+    const client=new Client({name:'invalid-callback',version:'1'},{versionNegotiation:{mode:{pin:'2026-07-28'}}});await client.connect(new StreamableHTTPClientTransport(endpoint));
+    await expect(client.request({method:'events/subscribe',params:{name:'workflow.continue',arguments:{topic:'test'},delivery:{mode:'webhook',url:'https://callback.example/a',secret:'whsec_'+Buffer.alloc(32,4).toString('base64')}}},z.object({}).passthrough())).rejects.toMatchObject({code:-32015,data:{reason:'challenge_failed'}});
+    await client.close();await mcp.close();events.close();await fs.rm(dir,{recursive:true,force:true});
+  });
+});

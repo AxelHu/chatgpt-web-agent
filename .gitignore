@@ -10,3 +10,6 @@ coverage/
 
 __pycache__/
 *.pyc
+
+# Private test receipts and local review output.
+.artifacts/

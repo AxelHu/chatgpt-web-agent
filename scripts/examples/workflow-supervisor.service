@@ -1,0 +1,13 @@
+# Template only: fill the verified repository path and registered workflow key.
+# Normal files/exec/Git permissions remain the existing personal-development ones.
+[Unit]
+Description=External tick for a registered Chat supervisor
+
+[Service]
+Type=oneshot
+WorkingDirectory=/REPLACE/WITH/VERIFIED/REPO
+Environment=CHATGPT_WEB_AGENT_EVENT_STORE=/REPLACE/WITH/STATE/events.sqlite
+ExecStart=/usr/bin/node /REPLACE/WITH/VERIFIED/REPO/dist/workflow-cli.js tick --target REPLACE_SUPERVISOR_KEY --producer systemd-hourly --period-ms 3600000
+# Busy/paused/no matching subscription is a normal skipped tick. Pending means
+# the running MCP HTTP outbox will retry; it is not proof of OpenAI acceptance.
+SuccessExitStatus=3 4
