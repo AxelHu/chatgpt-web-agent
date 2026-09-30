@@ -56,3 +56,16 @@ https://developers.openai.com/plugins/build/mcp-events
 Codex CLI gpt-6-sol/high、read-only审查发现：终态入队即标dispatched，明确400拒收后会失去自动续接入口。已修为delivery_failed：保留原终态和失败回执，不自动用新eventId反复敲一个明确拒收的callback。修复原因后，由授权监工/操作方调用现有workflow_manage resume，即可从保存的终态重发，不重跑进程；不要求人类逐次批准。400/413与不明503的区分各有回归。不明投递保持uncertain，resume不能凭空证明旧Chat没运行。
 
 首段审查遇到180秒执行超时，保存回执并续接同一Codex会话完成审查；这不是代码测试失败。修复后完整179 tests / 19 files通过。
+
+## 本机上线回执
+
+2026-09-30T11:30:32+08:00，以代码提交12f17cc3998879a535b6f164a6553baad9da5fc4更新MCP HTTP服务。旧override及SQLite备份留在本机scratch/mcp-events-followup-20260930，均不入仓。仅变更WorkingDirectory/ExecStart，events环境和数据库路径保持原值。
+
+- MCP HTTP PID：1217510 → 1502546，active；健康、modern event目录、20个工具通过live-surface探针。
+- workflow_manage公开watch_process/cancel_process_wait；workflow_run公开wait_process。
+- 独立exec runtime PID42159未变，官方tunnel PID3027614未变，均active。
+- 上线时真实workflows/process_waits/runs/outbox均为0；未创建云端订阅或周期监工。
+- 首次部署调用回执：因 OpenAI 无法确定请求的安全状态，已拦截此工具调用。随后只读核实旧HTTP PID/工作目录未变、无脚本进程/部署回执，再按原工具原参数重试；第二次成功。不能把第一次检查失败说成本机服务不可用。
+- 切换前建立的后台session在切换后仍能读取结果，但其25秒sleep在成功部署重试前已经结束，不能拿它冒充“运行中的进程跨线上重启”。运行中跨HTTP服务/SQLite连接重建的证据来自4项真实隔离集成测试中的restart用例。
+
+家中Desktop当前仍未提供schema Refresh按钮；此轮只能确认目录刷新及本机新接口，不能声称OpenAI事件已经驱动普通Chat续轮。Issue#41保持打开。
