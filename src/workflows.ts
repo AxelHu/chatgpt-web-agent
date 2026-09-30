@@ -10,7 +10,7 @@ export type Workflow = {
   permissionProfile: 'personal-development'; updatedAt: number;
 };
 export type WorkflowRun = {
-  id:string; eventId:string; task:string; rootId:string; sourceTask?:string;
+  id:string; eventId:string; task:string; rootId:string; sourceTask?:string; requestKey?:string;
   state:'queued'|'running'|'finished'|'cancelled'; requestedAt:number; startedAt?:number;
   lastHeartbeat?:number; leaseUntil?:number; leaseToken?:string; runner?:string;
   requestedRevision:number; finishedAt?:number; outcome?:string;
@@ -74,6 +74,7 @@ export class WorkflowCoordinator {
         run.state = 'cancelled'; run.outcome = 'delivery_rejected'; run.finishedAt = this.now;
         this.events.db.put('runs', run.id, run);
         this.events.db.remove('visits', hash(run.rootId+'\n'+task.key+'\n'+run.requestedRevision));
+        if(run.requestKey) this.events.db.remove('requests',run.requestKey);
         delete task.currentRun; task.state = 'idle'; task.summary = 'Delivery rejected; no run claimed.';
         this.save(task);
       }
@@ -115,7 +116,7 @@ export class WorkflowCoordinator {
     const visitKey=hash(input.rootId+'\n'+task.key+'\n'+task.revision);
     if(db.get('visits',visitKey)) return {accepted:false,reason:'no_progress_cycle'};
     const id='run_'+randomUUID(),eventId='evt_'+randomUUID();
-    const run:WorkflowRun={id,eventId,task:task.key,rootId:input.rootId,sourceTask:input.sourceTask,state:'queued',requestedAt:this.now,requestedRevision:task.revision};
+    const run:WorkflowRun={id,eventId,task:task.key,rootId:input.rootId,sourceTask:input.sourceTask,requestKey,state:'queued',requestedAt:this.now,requestedRevision:task.revision};
     const queued=this.events.enqueueContinue({topic:task.topic,trigger_reason:input.reason,summary:input.summary,state_ref:input.stateRef,
       source:input.sourceTask?'workflow':'external',source_task:input.sourceTask,target_task:task.key,root_id:input.rootId,dispatch_id:id,progress_version:task.revision},
       {eventId,subscriptionId:task.subscriptionId,owner:this.owner});

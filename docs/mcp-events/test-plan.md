@@ -1,6 +1,6 @@
 # 验收矩阵
 
-2026-09-30，当前本地完整回归149 tests / 17 files，另有独立Codex只读review。
+2026-09-30，当前本地完整回归150 tests / 17 files，另有独立Codex只读review。
 
 | 层级 | 验证 | 当前证据 |
 |---|---|---|
@@ -17,7 +17,7 @@
 
 ## 独立review
 
-Codex gpt-6-sol high、read-only检查提出4项：旧store检测、永久失败卡队列、DNS首地址失败、standalone emitter pending退出码。均补修与相应回归；传输不确定性按更严格的重复运行防护处理，不能因timeout直接清空任务。
+Codex gpt-6-sol high、read-only检查提出4项：旧store检测、永久失败卡队列、DNS首地址失败、standalone emitter pending退出码。均补修与相应回归；第二轮审查补充了拒收后的同key重试、undefined字段序列化、HTTPS复用连接识别，已分别修复（独立HTTPS连接避免误判已发送请求）；传输不确定性按更严格的重复运行防护处理，不能因timeout直接清空任务。
 
 Reviewer sandbox里执行测试时/tmp目录失败、没有执行到测试；不把该环境失败说成代码回归。实际pnpm check在正常开发运行时通过。
 

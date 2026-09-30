@@ -136,3 +136,10 @@ it('a later definitive rejection does not erase an earlier ambiguous delivery',a
  for(const row of events.db.all<import('../src/events.js').OutboxDelivery>('outbox'))if(row.eventId===r.eventId)events.db.put('outbox',row.key,{...row,state:'failed',status:410,attempts:2,ambiguousAttempts:1});
  c.synchronizeDeliveryOutcomes();expect(c.status('supervisor').workflows[0]!.state).toBe('uncertain');
 });
+
+it('allows the same external tick key to retry after a definitive rejection was reconciled',async()=>{
+ const {c,events}=await setup();const first=external(c,'same-clock-slot');
+ for(const row of events.db.all<import('../src/events.js').OutboxDelivery>('outbox'))if(row.eventId===first.eventId)events.db.put('outbox',row.key,{...row,state:'failed',status:413,attempts:1,ambiguousAttempts:0});
+ c.synchronizeDeliveryOutcomes();const second=external(c,'same-clock-slot');
+ expect(second.accepted).toBe(true);expect(second.dispatchId).not.toBe(first.dispatchId);expect(second.rootId).toBe(first.rootId);
+});
