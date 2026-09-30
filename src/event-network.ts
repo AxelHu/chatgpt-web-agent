@@ -40,7 +40,7 @@ export async function pinnedHttpsPost(value: string, body: string, headers: Reco
     let connected=false;
     const request=https.request({
       hostname:host,port:url.port||443,path:url.pathname+url.search,
-      servername:net.isIP(host)?undefined:host,method:'POST',signal,family:target.family,
+      servername:net.isIP(host)?undefined:host,method:'POST',signal,family:target.family,agent:false,
       headers:{...headers,'content-length':String(Buffer.byteLength(body))},
       lookup:((_host:string,_options:unknown,callback:(error:NodeJS.ErrnoException|null,address:string,family:number)=>void)=>callback(null,target.address,target.family)) as never,
     },response=>{

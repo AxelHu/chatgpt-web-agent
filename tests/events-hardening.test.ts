@@ -110,3 +110,11 @@ it('tries a second validated address only for a pre-connection failure',async()=
  expect(await tryValidatedAddresses(addresses,async()=>{if(++tries===1)throw connectionFailure();return 'connected';})).toBe('connected');expect(tries).toBe(2);
  tries=0;await expect(tryValidatedAddresses(addresses,async()=>{tries++;throw new Error('response_lost_after_send');})).rejects.toThrow('response_lost_after_send');expect(tries).toBe(1);
 });
+
+it('idempotent event comparison uses JSON semantics for undefined optional fields',async()=>{
+ const {runtime,request}=fixture();await runtime.subscribe('owner',request);
+ const data={topic:'topic',trigger_reason:'ready',summary:undefined,state_ref:undefined};
+ await runtime.emitContinue(data,{eventId:'undefined-optional'});
+ await expect(runtime.emitContinue(data,{eventId:'undefined-optional'})).resolves.toMatchObject({delivered:1});
+ await expect(runtime.emitContinue({topic:'topic',trigger_reason:'ready'},{eventId:'undefined-optional'})).resolves.toMatchObject({delivered:1});
+});

@@ -116,9 +116,10 @@ function defaultStorePath(): string {
   return explicit ? path.resolve(explicit) : path.join(process.env.XDG_STATE_HOME || path.join(os.homedir(), '.local', 'state'), 'chatgpt-web-agent', 'events.sqlite');
 }
 export function canonicalJson(value: unknown): string {
+  if (value === undefined) return 'null';
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) return '[' + value.map(canonicalJson).join(',') + ']';
-  return '{' + Object.keys(value).sort().map(k => JSON.stringify(k) + ':' + canonicalJson((value as Record<string,unknown>)[k])).join(',') + '}';
+  return '{' + Object.keys(value).filter(k => (value as Record<string,unknown>)[k] !== undefined).sort().map(k => JSON.stringify(k) + ':' + canonicalJson((value as Record<string,unknown>)[k])).join(',') + '}';
 }
 function identity(owner: string, url: string, name: string, args: Record<string,unknown>): string {
   return 'sub_' + createHash('sha256').update(canonicalJson([owner,url,name,args])).digest('hex').slice(0,32);
