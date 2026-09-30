@@ -58,3 +58,5 @@ SQLite/WAL 事务保存 subscriptions、outbox、runs、workflows、因果访问
 5. 真实订阅/验签/回调/新回合/工作者claim都成功后，再做两会话监工派发；测试后暂停探针。未通过之前不迁移现有研究监工或Feed定时任务。
 
 时钟示例在 scripts/examples；只是配置模板，尚未启用任何新的无限循环定时任务。
+
+当前实施状态见 [2026-09-30 部署记录](deployment-20260930.md)：本机服务已上线，平台端仍需真实schema刷新后再验收。

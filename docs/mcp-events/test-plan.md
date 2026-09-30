@@ -12,7 +12,7 @@
 | 失败 | 明确拒收释放排队；先不明后410仍保留uncertain；晚到真实claim可收尾 | 通过 |
 | 权限 | status无secret/lease；写工具真实标注；当前full/ask=off未改变 | 本机和插件核验 |
 | 双客户端 | 独立MCP客户端扮演监工和工作者，经真实HTTP完整两段事件 | 通过，callback接收端为mock，不是OpenAI |
-| OpenAI端 | 新普通Chat真实订阅、callback验签、原订阅Chat新回合、调用WebAgentTools | 尚待平台侧重扫与真实探针，不宣称通过 |
+| OpenAI端 | 新普通Chat真实订阅、callback验签、原订阅Chat新回合、调用WebAgentTools | 已实际创建普通Chat探针：仍获得旧工具目录，订阅未创建；详见deployment-20260930.md |
 | 稳定性 | 停止/限流/审批/工具缺失/并发回合/网页关掉后仍触发 | 待真实Chat事件功能验证后按有限用例测 |
 
 ## 独立review
@@ -26,3 +26,5 @@ Reviewer sandbox里执行测试时/tmp目录失败、没有执行到测试；不
 目标不是“通知已发送”，而是确认：由ChatGPT分配callback，服务器验签成功，事件2xx，ChatGPT自己新增run，工作者领取后写一条限定scratch证明，再finish；不通过Desktop send伪装成callback续轮。
 
 先一个worker/一个event；成功后一个supervisor+一个worker+一个external tick；不自动启用周期任务。记录threadId、subscriptionId（回执隐藏callback/secret）、eventId、new message/run证明、claim/finish和审批次数。完成后暂停或取消探针。
+
+当前部署、协议证明、真实普通Chat尝试与管理端限制详见 [部署记录](deployment-20260930.md)。
