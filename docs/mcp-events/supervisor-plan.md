@@ -53,7 +53,7 @@ SQLite/WAL 事务保存 subscriptions、outbox、runs、workflows、因果访问
 
 1. 完成本地和HTTP回归，独立代码review修复后提交PR。
 2. 不改带用户未提交修改的旧生产checkout；仅 MCP HTTP 服务使用本次已验证版本。保留独立 exec runtime 和官方 tunnel，不中断后台job。
-3. 通过localhost现代SDK核验 discovery/events/workflow tools，原有legacy工具不变。
+3. 通过localhost现代SDK核验 discovery/events/workflow tools。事件协议只在modern开启，但普通workflow工具也支持legacy tools/call，避免代理发现用modern、调用用legacy时失效。
 4. 在自建插件管理入口 Rescan；Desktop catalog refresh并不等价。新建普通 Chat 作有限探针。
 5. 真实订阅/验签/回调/新回合/工作者claim都成功后，再做两会话监工派发；测试后暂停探针。未通过之前不迁移现有研究监工或Feed定时任务。
 

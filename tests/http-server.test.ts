@@ -241,3 +241,15 @@ describe('supervisor tools across independent MCP clients (mock callback receive
     await client.close();await mcp.close();events.close();await fs.rm(dir,{recursive:true,force:true});
   });
 });
+
+it('keeps ordinary workflow tools callable on a legacy tools/call leg',async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'workflow-legacy-tool-'));
+ const events=new EventRuntime({storePath:path.join(dir,'events.sqlite'),validateCallback:async()=>{},sender:async()=>({ok:true,status:202,body:''})});
+ const mcp=createHttpMcpServer({backend:stubBackend(),events}),endpoint=await listen(mcp);
+ const client=new Client({name:'legacy-workflow-tool',version:'1'});await client.connect(new StreamableHTTPClientTransport(endpoint));
+ expect(client.getProtocolEra()).toBe('legacy');
+ expect((client.getServerCapabilities() as Record<string,unknown>).events).toBeUndefined();
+ expect((await client.listTools()).tools.map(t=>t.name)).toContain('workflow_status');
+ const result=await client.callTool({name:'workflow_status',arguments:{}});expect(result.isError).not.toBe(true);expect(result.structuredContent).toHaveProperty('workflows');
+ await client.close();await mcp.close();events.close();await fs.rm(dir,{recursive:true,force:true});
+});

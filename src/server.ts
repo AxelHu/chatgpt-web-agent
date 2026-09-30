@@ -27,9 +27,10 @@ export function createMcpProtocolServer(
   trace?: FullTrace,
   events?: EventRuntime,
   eventOwner = "local-tunnel-user",
+  enableEventMethods = true,
 ): Server {
   const workflowBackend = events ? new WorkflowBackend(new WorkflowCoordinator(events, eventOwner)) : undefined;
-  const capabilities = { tools: {}, ...(events ? { events: {} } : {}) };
+  const capabilities = { tools: {}, ...(events && enableEventMethods ? { events: {} } : {}) };
   const server = new Server(
     { name: "chatgpt-web-agent", version: "0.1.0" },
     {
@@ -120,7 +121,7 @@ export function createMcpProtocolServer(
     }
   });
 
-  if (events) {
+  if (events && enableEventMethods) {
     server.setRequestHandler(
       "events/list",
       {

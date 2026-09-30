@@ -59,7 +59,11 @@ export function createHttpMcpServer(options: HttpMcpServerOptions): HttpMcpServe
         backend,
         ledger,
         trace,
-        context.era === "modern" ? events : undefined,
+        // Event protocol methods require modern envelopes, but regular tools
+        // must remain callable when a proxy routes tools/call on a legacy leg.
+        events,
+        "local-tunnel-user",
+        context.era === "modern",
       );
     },
     {

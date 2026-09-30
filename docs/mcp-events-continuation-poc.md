@@ -3,7 +3,7 @@
 Date: 2026-09-30
 
 > 2026-09-30 后续实现：参见 [监工实施方案](mcp-events/supervisor-plan.md) 与 [验收矩阵](mcp-events/test-plan.md)。
-> 下文是最初16c8e60的PoC快照：JSON存储、CLI-only发射与95tests已被后续SQLite/outbox、明确跨会话工具及150tests取代；真实OpenAI续轮仍必须单独验收。
+> 下文是最初16c8e60的PoC快照：JSON存储、CLI-only发射与95tests已被后续SQLite/outbox、明确跨会话工具及151tests取代；真实OpenAI续轮仍必须单独验收。
 
 ## Goal
 
