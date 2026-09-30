@@ -15,6 +15,7 @@ import { createMcpProtocolServer } from "./server.js";
 import { EventRuntime } from "./events.js";
 import { WorkflowCoordinator } from "./workflows.js";
 import { ProcessWaitDriver } from './process-waits.js';
+import { EVENT_AUDIT_VERSION } from './event-request-audit.js';
 
 const MODERN_PROTOCOL_VERSION = "2026-07-28";
 
@@ -39,6 +40,10 @@ export function createHttpMcpServer(options: HttpMcpServerOptions): HttpMcpServe
   const events = options.events === false
     ? undefined
     : options.events ?? (process.env.CHATGPT_WEB_AGENT_EVENTS_ENABLED === "true" ? new EventRuntime() : undefined);
+  if (events) ledger?.record({
+    phase: "event_audit_started", ok: true,
+    metadata: { version: EVENT_AUDIT_VERSION, pid: process.pid },
+  });
   const reportHandlerError = (phase: string, error: unknown) => {
     ledger?.record({ phase, ok: false, errorKind: errorKind(error) });
     trace?.record({ phase, ok: false, error });
@@ -109,6 +114,7 @@ export function createHttpMcpServer(options: HttpMcpServerOptions): HttpMcpServe
           legacyCompatibility: "stateless",
           sessions: 0,
           events: Boolean(events),
+          eventAuditVersion: events ? EVENT_AUDIT_VERSION : undefined,
         }),
       );
       return;
