@@ -1,6 +1,6 @@
 # 验收矩阵
 
-2026-09-30，当前本地完整回归151 tests / 17 files，另有独立Codex只读review。
+2026-09-30，当前本地完整回归179 tests / 19 files，另有独立Codex只读review。
 
 | 层级 | 验证 | 当前证据 |
 |---|---|---|
@@ -8,10 +8,12 @@
 | 签名/传输 | challenge、缓存、轮换双签、同ID重试、429退避、410/413、6次截止 | 单元/协议测试通过 |
 | 存储 | 24并发订阅、两个独立SQLite连接抢一个outbox、重启恢复、取消竞态、旧JSON识别 | 通过 |
 | 调度 | 外部→监工→工作者、领取幂等、状态分层、busy、独立工作树、暂停、租约、reconcile | 通过 |
-| 循环 | 直接self拒绝；同root无进展回环拒绝；新checkpoint允许回访；100独立tick完成200run | 通过，无总回合小上限 |
+| 循环 | 直接self拒绝；无检查点变化的40次同root跨会话交接允许；回访仅advisory；100独立tick完成200run | 通过，无总回合小上限 |
 | 失败 | 明确拒收释放排队；先不明后410仍保留uncertain；晚到真实claim可收尾 | 通过 |
 | 权限 | status无secret/lease；写工具真实标注；当前full/ask=off未改变 | 本机和插件核验 |
 | 双客户端 | 独立MCP客户端扮演监工和工作者，经真实HTTP完整两段事件 | 通过，callback接收端为mock，不是OpenAI |
+| 进程等待 | 静默成功、非零失败、信号/两类超时、快完成、读失败、暂停/订阅丢失、取消、去重和并发观察 | 23项定向单测通过 |
+| 真实进程 | 实际OpenClaw后台进程、原MCP客户端断开、服务定时器、替换HTTP服务及SQLite连接、原日志可读 | 4项真实进程集成通过；回调接收端仍是mock |
 | OpenAI端 | 新普通Chat真实订阅、callback验签、原订阅Chat新回合、调用WebAgentTools | 已实际创建普通Chat探针：仍获得旧工具目录，订阅未创建；详见deployment-20260930.md |
 | 稳定性 | 停止/限流/审批/工具缺失/并发回合/网页关掉后仍触发 | 待真实Chat事件功能验证后按有限用例测 |
 
@@ -28,3 +30,7 @@ Reviewer sandbox里执行测试时/tmp目录失败、没有执行到测试；不
 先一个worker/一个event；成功后一个supervisor+一个worker+一个external tick；不自动启用周期任务。记录threadId、subscriptionId（回执隐藏callback/secret）、eventId、new message/run证明、claim/finish和审批次数。完成后暂停或取消探针。
 
 当前部署、协议证明、真实普通Chat尝试与管理端限制详见 [部署记录](deployment-20260930.md)。
+
+## 本轮修正
+
+见 progress-and-process-followup-20260930.md。旧版本把目标checkpoint字符串变化称为“进展”，已撤销其硬拒绝作用，避免正常worker→reviewer交接误判。全部新增用例实测后才更新上述计数。

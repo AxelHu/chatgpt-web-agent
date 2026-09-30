@@ -5,7 +5,8 @@ import { EventRuntime } from './events.js';
 export type Workflow = {
   key: string; topic: string; role: 'supervisor'|'worker'; workspace?: string;
   subscriptionId?: string; chatRef?: string;
-  enabled: boolean; state: 'idle'|'queued'|'running'|'completed'|'needs_input'|'uncertain';
+  enabled: boolean; state: 'idle'|'queued'|'running'|'waiting'|'completed'|'needs_input'|'uncertain';
+  waitingFor?: string;
   revision: number; checkpoint?: string; summary?: string; currentRun?: string;
   permissionProfile: 'personal-development'; updatedAt: number;
 };
@@ -15,13 +16,20 @@ export type WorkflowRun = {
   lastHeartbeat?:number; leaseUntil?:number; leaseToken?:string; runner?:string;
   requestedRevision:number; finishedAt?:number; outcome?:string;
 };
-export type DispatchResult = { accepted:boolean; reason:string; dispatchId?:string; eventId?:string; rootId?:string };
+export type DispatchResult = { accepted:boolean; reason:string; dispatchId?:string; eventId?:string; rootId?:string; warnings?:string[] };
+export type ProcessObservation = { status:'completed'|'failed'; exitCode?:number; exitSignal?:string; exitReason?:string; timedOut?:boolean; noOutputTimedOut?:boolean };
+export type ProcessWait = {
+  id:string; task:string; sessionId:string; state:'watching'|'terminal'|'dispatched'|'delivery_failed'|'cancelled';
+  createdAt:number; nextCheckAt:number; failures:number; lastError?:string; lastObservedAt?:number;
+  observation?:ProcessObservation; dispatchId?:string; eventId?:string; sourceRunId?:string;
+};
 const hash=(v:string)=>createHash('sha256').update(v).digest('hex');
 function equal(a:string,b:string):boolean { const x=Buffer.from(a),y=Buffer.from(b); return x.length===y.length&&timingSafeEqual(x,y); }
 
 /** Cooperation, not a filesystem sandbox. Local shell remains fully usable.
  * No command blacklist, no arbitrary cap on total cross-chat work. A new
- * external tick starts a new causal root; loops within one root need progress. */
+ * external tick starts a new causal root. Checkpoint references are telemetry,
+ * never a semantic proof of progress or an execution permission. */
 export class WorkflowCoordinator {
   constructor(readonly events:EventRuntime,readonly owner='local-tunnel-user') {}
   private get now():number { return this.events.now().getTime(); }
@@ -46,7 +54,19 @@ export class WorkflowCoordinator {
     });
   }
   setEnabled(key:string,enabled:boolean):Workflow {
-    return this.events.db.atomic(()=>{const task=this.task(key); task.enabled=enabled; this.save(task); return task;});
+    return this.events.db.atomic(()=>{
+      this.synchronizeDeliveryOutcomes();
+      const task=this.task(key);task.enabled=enabled;
+      const wait=task.waitingFor?this.events.db.get<ProcessWait>('process_waits',task.waitingFor):undefined;
+      if(enabled&&wait?.state==='delivery_failed'&&wait.observation) {
+        // A definite rejection must not be retried forever with fresh IDs.
+        // After repairing the cause, an authorized supervisor/operator can
+        // resume this saved terminal receipt without running the job again.
+        wait.state='terminal';wait.nextCheckAt=this.now;delete wait.lastError;
+        this.events.db.put('process_waits',wait.id,wait);
+      }
+      this.save(task);return task;
+    });
   }
   status(key?:string) {
     const workflows=(key?[this.task(key)]:this.events.db.all<Workflow>('workflows')).map(t=>{
@@ -54,7 +74,7 @@ export class WorkflowCoordinator {
       return {...t,leaseStale:Boolean(r?.state==='running'&&(r.leaseUntil??0)<this.now)};
     });
     const runs=this.events.db.recent<WorkflowRun>('runs',40,key).map(({leaseToken,...r})=>r);
-    return {workflows,runs,counts:{totalRuns:this.events.db.count('runs'),totalDeliveries:this.events.db.count('outbox'),recentLimit:40},subscriptions:this.events.subscriptionSummaries(),outbox:this.events.outboxSummary()};
+    return {workflows,runs,processWaits:this.events.db.recent<ProcessWait>('process_waits',40,key),counts:{totalRuns:this.events.db.count('runs'),totalDeliveries:this.events.db.count('outbox'),recentLimit:40},subscriptions:this.events.subscriptionSummaries(),outbox:this.events.outboxSummary()};
   }
   /** Observe terminal transport outcomes without treating a timeout as proof
    * that no Chat run started. Definitively rejected deliveries release a queue;
@@ -76,6 +96,13 @@ export class WorkflowCoordinator {
         this.events.db.remove('visits', hash(run.rootId+'\n'+task.key+'\n'+run.requestedRevision));
         if(run.requestKey) this.events.db.remove('requests',run.requestKey);
         delete task.currentRun; task.state = 'idle'; task.summary = 'Delivery rejected; no run claimed.';
+        const wait=this.events.db.all<ProcessWait>('process_waits').find(w=>w.dispatchId===run.id&&w.state==='dispatched');
+        if(wait) {
+          wait.state='delivery_failed';wait.lastError='delivery_rejected:'+rows.map(r=>r.status??r.state).join(',');
+          this.events.db.put('process_waits',wait.id,wait);
+          task.state='waiting';task.waitingFor=wait.id;
+          task.summary='Process ended, but its notification was rejected. Repair callback and resume to retry the saved receipt.';
+        }
         this.save(task);
       }
     });
@@ -109,12 +136,15 @@ export class WorkflowCoordinator {
     if(!task.enabled) return {accepted:false,reason:'paused'};
     if(task.state==='completed'||task.state==='needs_input'||task.state==='uncertain') return {accepted:false,reason:task.state};
     if(task.currentRun||task.state==='queued'||task.state==='running') return {accepted:false,reason:'busy'};
-    if(task.workspace&&db.all<Workflow>('workflows').some(t=>t.key!==task.key&&t.workspace===task.workspace&&t.currentRun)) return {accepted:false,reason:'workspace_busy'};
+    if(task.waitingFor||task.state==='waiting') return {accepted:false,reason:'waiting_process'};
+    if(task.workspace&&db.all<Workflow>('workflows').some(t=>t.key!==task.key&&t.workspace===task.workspace&&(t.currentRun||t.waitingFor))) return {accepted:false,reason:'workspace_busy'};
     const subs=this.events.activeSubscriptions(task.topic,this.owner).filter(s=>!task.subscriptionId||s.id===task.subscriptionId);
     if(subs.length!==1) return {accepted:false,reason:subs.length?'ambiguous_subscription':'no_active_subscription'};
     task.subscriptionId=subs[0]!.id;
     const visitKey=hash(input.rootId+'\n'+task.key+'\n'+task.revision);
-    if(db.get('visits',visitKey)) return {accepted:false,reason:'no_progress_cycle'};
+    // Unchanged/missing checkpoints do not establish lack of progress. In
+    // particular a worker returning findings must be able to wake its reviewer.
+    const sameCheckpointRevisit=Boolean(db.get('visits',visitKey));
     const id='run_'+randomUUID(),eventId='evt_'+randomUUID();
     const run:WorkflowRun={id,eventId,task:task.key,rootId:input.rootId,sourceTask:input.sourceTask,requestKey,state:'queued',requestedAt:this.now,requestedRevision:task.revision};
     const queued=this.events.enqueueContinue({topic:task.topic,trigger_reason:input.reason,summary:input.summary,state_ref:input.stateRef,
@@ -122,7 +152,8 @@ export class WorkflowCoordinator {
       {eventId,subscriptionId:task.subscriptionId,owner:this.owner});
     if(queued.matched!==1) throw new Error('subscription_changed');
     task.currentRun=id; task.state='queued'; this.save(task); db.put('runs',id,run);
-    const result:DispatchResult={accepted:true,reason:'queued',dispatchId:id,eventId,rootId:input.rootId};
+    const result:DispatchResult={accepted:true,reason:'queued',dispatchId:id,eventId,rootId:input.rootId,
+      ...(sameCheckpointRevisit?{warnings:['same_root_checkpoint_unchanged_advisory']}: {})};
     db.put('visits',visitKey,{runId:id}); db.put('requests',requestKey,result); return result;
   }
   claim(input:{task:string;dispatchId:string;runner:string;leaseMs?:number}) {
@@ -160,6 +191,67 @@ export class WorkflowCoordinator {
       return {state:task.state,revision:task.revision};
     });
   }
+  /** Explicitly hand the task to a real process. An ordinary idle chat can
+   * register a wait without a run lease; a running worker must present its lease.
+   * Waiting releases the model run, but retains the shared-workspace fence. */
+  waitProcess(input:{task:string;sessionId:string;leaseToken?:string;checkpoint?:string;summary?:string}) {
+    return this.events.db.atomic(()=>{
+      if(!input.sessionId.trim()||input.sessionId.length>200) throw new Error('invalid_process_session');
+      const id='wait_'+hash(input.task+'\n'+input.sessionId).slice(0,32);
+      const existing=this.events.db.get<ProcessWait>('process_waits',id);
+      if(existing) return {...existing,duplicate:true};
+      let task=this.task(input.task);
+      if(task.waitingFor) throw new Error('already_waiting_for_process');
+      let sourceRunId:string|undefined;
+      if(task.currentRun) {
+        if(!input.leaseToken) throw new Error('run_lease_required');
+        sourceRunId=this.actor(input.task,input.leaseToken).id;
+        this.finish({task:input.task,leaseToken:input.leaseToken,outcome:'idle',checkpoint:input.checkpoint,summary:input.summary});
+        task=this.task(input.task);
+      } else if(input.leaseToken) throw new Error('invalid_run_lease');
+      else if(task.state!=='idle') throw new Error('workflow_not_idle');
+      if(task.workspace&&this.events.db.all<Workflow>('workflows').some(t=>t.key!==task.key&&t.workspace===task.workspace&&(t.currentRun||t.waitingFor))) throw new Error('workspace_busy');
+      const wait:ProcessWait={id,task:input.task,sessionId:input.sessionId,state:'watching',createdAt:this.now,nextCheckAt:this.now,failures:0,sourceRunId};
+      task.waitingFor=id;task.state='waiting';this.save(task);this.events.db.put('process_waits',id,wait);
+      return {...wait,duplicate:false};
+    });
+  }
+  recordProcessObservation(id:string,observation:ProcessObservation) {
+    this.events.db.atomic(()=>{
+      const wait=this.events.db.get<ProcessWait>('process_waits',id);
+      if(!wait||wait.state!=='watching') return;
+      wait.observation=observation;wait.state='terminal';wait.lastObservedAt=this.now;wait.nextCheckAt=this.now;delete wait.lastError;
+      this.events.db.put('process_waits',id,wait);
+    });
+  }
+  resumeProcessWait(id:string):DispatchResult {
+    return this.events.db.atomic(()=>{
+      const wait=this.events.db.get<ProcessWait>('process_waits',id);
+      if(!wait||wait.state!=='terminal'||!wait.observation) return {accepted:false,reason:'process_not_terminal'};
+      const task=this.task(wait.task);
+      if(task.waitingFor!==id||task.state!=='waiting') return {accepted:false,reason:'wait_not_current'};
+      // One SQLite transaction: neither lost resumes nor a second
+      // worker can appear in the gap between releasing and replacing the fence.
+      delete task.waitingFor;task.state='idle';this.save(task);
+      const o=wait.observation;
+      const reason=o.timedOut||o.noOutputTimedOut?'process.timed_out':o.exitSignal?'process.signalled':o.status==='failed'||(o.exitCode!==undefined&&o.exitCode!==0)?'process.failed':'process.completed';
+      const result=this.external({target:task.key,producer:'process:'+wait.sessionId,dedupKey:wait.id,reason,
+        summary:JSON.stringify({session_id:wait.sessionId,...o}),stateRef:'process:'+wait.sessionId});
+      if(result.accepted) {wait.state='dispatched';wait.dispatchId=result.dispatchId;wait.eventId=result.eventId;delete wait.lastError;}
+      else {task.waitingFor=id;task.state='waiting';this.save(task);wait.lastError=result.reason;wait.nextCheckAt=this.now+5000;}
+      this.events.db.put('process_waits',id,wait);return result;
+    });
+  }
+  cancelProcessWait(taskKey:string) {
+    return this.events.db.atomic(()=>{
+      const task=this.task(taskKey),wait=task.waitingFor?this.events.db.get<ProcessWait>('process_waits',task.waitingFor):undefined;
+      if(!wait) return {cancelled:false,reason:'no_current_process_wait'};
+      wait.state='cancelled';this.events.db.put('process_waits',wait.id,wait);
+      // Cancelling the notification is not evidence that the process stopped.
+      task.state='uncertain';task.summary='Process notification cancelled; verify the job before releasing its workspace.';this.save(task);
+      return {cancelled:true,processStopped:false};
+    });
+  }
   reconcile(input:{task:string;observedIdle:boolean;evidence:string}) {
     if(!input.observedIdle||!input.evidence.trim()) throw new Error('idle_observation_required');
     return this.events.db.atomic(()=>{
@@ -172,6 +264,11 @@ export class WorkflowCoordinator {
             if(delivery.eventId===run.eventId && (delivery.state==='pending'||delivery.state==='sending')) this.events.db.put('outbox',delivery.key,{...delivery,state:'cancelled',error:'workflow_reconciled'});
           }
         }
+      }
+      if(task.waitingFor) {
+        const wait=this.events.db.get<ProcessWait>('process_waits',task.waitingFor);
+        if(wait&&wait.state!=='dispatched'){wait.state='cancelled';this.events.db.put('process_waits',wait.id,wait);}
+        delete task.waitingFor;
       }
       task.state='idle'; delete task.currentRun; this.save(task); return task;
     });
