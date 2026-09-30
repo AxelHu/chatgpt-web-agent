@@ -5,8 +5,10 @@
   "type": "module",
   "bin": {
     "chatgpt-web-agent": "dist/cli.js",
+    "chatgpt-web-agent-event": "dist/event-cli.js",
     "chatgpt-web-agent-exec-runtime": "dist/exec-runtime-cli.js",
-    "chatgpt-web-agent-http": "dist/http-cli.js"
+    "chatgpt-web-agent-http": "dist/http-cli.js",
+    "chatgpt-web-agent-workflow": "dist/workflow-cli.js"
   },
   "files": [
     "dist",
@@ -28,11 +30,14 @@
     "node": ">=22.22.3 <23 || >=24.15.0 <25 || >=25.9.0"
   },
   "dependencies": {
+    "@modelcontextprotocol/client": "^2.2.0",
+    "@modelcontextprotocol/node": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.2.0",
     "googleapis": "^174.0.1",
+    "ipaddr.js": "2.2.0",
     "openclaw": "2026.8.2",
-    "@modelcontextprotocol/client": "^2.0.0",
-    "@modelcontextprotocol/server": "^2.0.0",
-    "@modelcontextprotocol/node": "^2.0.0"
+    "standardwebhooks": "1.0.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.18.0",

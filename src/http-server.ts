@@ -12,6 +12,8 @@ import type { LocalToolBackend } from "./backend/types.js";
 import type { FullTrace } from "./full-trace.js";
 import type { RequestLedger } from "./request-ledger.js";
 import { createMcpProtocolServer } from "./server.js";
+import { EventRuntime } from "./events.js";
+import { WorkflowCoordinator } from "./workflows.js";
 
 const MODERN_PROTOCOL_VERSION = "2026-07-28";
 
@@ -19,6 +21,7 @@ export type HttpMcpServerOptions = {
   backend: LocalToolBackend;
   ledger?: RequestLedger;
   trace?: FullTrace;
+  events?: EventRuntime | false;
 };
 
 export type HttpMcpServer = {
@@ -32,6 +35,9 @@ function errorKind(error: unknown): string {
 
 export function createHttpMcpServer(options: HttpMcpServerOptions): HttpMcpServer {
   const { backend, ledger, trace } = options;
+  const events = options.events === false
+    ? undefined
+    : options.events ?? (process.env.CHATGPT_WEB_AGENT_EVENTS_ENABLED === "true" ? new EventRuntime() : undefined);
   const reportHandlerError = (phase: string, error: unknown) => {
     ledger?.record({ phase, ok: false, errorKind: errorKind(error) });
     trace?.record({ phase, ok: false, error });
@@ -49,7 +55,16 @@ export function createHttpMcpServer(options: HttpMcpServerOptions): HttpMcpServe
         ok: true,
         metadata: { era: context.era },
       });
-      return createMcpProtocolServer(backend, ledger, trace);
+      return createMcpProtocolServer(
+        backend,
+        ledger,
+        trace,
+        // Event protocol methods require modern envelopes, but regular tools
+        // must remain callable when a proxy routes tools/call on a legacy leg.
+        events,
+        "local-tunnel-user",
+        context.era === "modern",
+      );
     },
     {
       // Modern clients use the 2026-07-28 per-request/sessionless protocol.
@@ -61,6 +76,13 @@ export function createHttpMcpServer(options: HttpMcpServerOptions): HttpMcpServe
       onerror: (error) => reportHandlerError("mcp_http_handler_error", error),
     },
   );
+  // One bounded attempt per due delivery. SQLite claims prevent concurrent
+  // CLI/HTTP emitters from concurrently sending the same row.
+  let flushing: Promise<void> | undefined;
+  const outboxTimer = events ? setInterval(() => {
+    if (!flushing) flushing = events.flush().then(() => new WorkflowCoordinator(events).synchronizeDeliveryOutcomes()).catch(error => reportHandlerError("event_outbox_error", error)).finally(() => { flushing = undefined; });
+  }, 2000) : undefined;
+  outboxTimer?.unref();
   const nodeHandler = toNodeHandler(handler, {
     onerror: (error) => reportHandlerError("mcp_http_adapter_error", error),
   });
@@ -79,6 +101,7 @@ export function createHttpMcpServer(options: HttpMcpServerOptions): HttpMcpServe
           modernProtocol: MODERN_PROTOCOL_VERSION,
           legacyCompatibility: "stateless",
           sessions: 0,
+          events: Boolean(events),
         }),
       );
       return;
@@ -97,6 +120,8 @@ export function createHttpMcpServer(options: HttpMcpServerOptions): HttpMcpServe
     close: async () => {
       if (closing) return;
       closing = true;
+      if (outboxTimer) clearInterval(outboxTimer);
+      await flushing;
       await handler.close();
       await new Promise<void>((resolve, reject) => {
         nodeServer.close((error) => (error ? reject(error) : resolve()));

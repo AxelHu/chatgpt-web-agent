@@ -1,0 +1,11 @@
+# Template only, NOT installed/enabled by this change.
+[Unit]
+Description=Hourly external supervisor tick
+
+[Timer]
+OnCalendar=hourly
+Persistent=false
+Unit=workflow-supervisor.service
+
+[Install]
+WantedBy=timers.target
