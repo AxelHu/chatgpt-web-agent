@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT Actual Model Route
 // @namespace    https://chatgpt.com/
-// @version      0.7.0
+// @version      0.7.1
 // @description  Show the concrete model recorded on each ChatGPT assistant message without collecting conversation text.
 // @match        https://chatgpt.com/*
 // @run-at       document-start
@@ -12,7 +12,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.7.0";
+  const VERSION = "0.7.1";
   const testHook = globalThis.__CHATGPT_ROUTE_INDICATOR_TEST__;
   const GPT6_ALIASES = new Set(["gpt-6-pro", "gpt-6-astra", "gpt-6-astra-pro"]);
   const ROUTE_KEYS = ["default_model_slug", "requested_model_slug", "resolved_model_slug", "model_slug"];
@@ -103,7 +103,8 @@
     );
     const status = exceptionalStatus(metadata, fallback);
     if (!actual && !resolved && !requested && !expected && !status
-      && !thinkingEffort && !reasoningObserved && !toolObserved) return null;
+      && !thinkingEffort && !reasoningObserved && !toolObserved
+      && !(authorRole && fallback.messageId)) return null;
     return {
       messageId: fallback.messageId || null,
       turnExchangeId: typeof metadata.turn_exchange_id === "string"
@@ -184,7 +185,7 @@
       const contentType = node.content && typeof node.content === "object" && typeof node.content.content_type === "string"
         ? node.content.content_type
         : null;
-      if (authorRole === "assistant" || authorRole === "tool"
+      if (["assistant", "tool", "user", "system", "developer"].includes(authorRole)
         || (metadata && ROUTE_KEYS.some((key) => typeof metadata[key] === "string"))) {
         const route = routeFromMetadata(metadata || {}, {
           messageId: typeof node.id === "string" ? node.id : null,
@@ -232,7 +233,88 @@
     }).at(-1) || null;
   }
 
+  function parseMessageIds(value) {
+    if (typeof value !== "string") return { ids: [], valid: false };
+    const text = value.trim();
+    if (!text) return { ids: [], valid: true };
+    let items;
+    try {
+      if (/^[\["{]/.test(text)) {
+        const decoded = JSON.parse(text);
+        items = Array.isArray(decoded) ? decoded : typeof decoded === "string" ? decoded.trim().split(/[\s,]+/).filter(Boolean) : null;
+      } else items = text.split(/[\s,]+/).filter(Boolean);
+    } catch (_) { return { ids: [], valid: false }; }
+    // No substring matching, numeric coercion, or execution of attribute text.
+    if (!items || !items.every((id) => typeof id === "string"
+      && /^[A-Za-z0-9][A-Za-z0-9_.:-]*$/.test(id)
+      && !["true", "false", "null", "undefined"].includes(id))) return { ids: [], valid: false };
+    return { ids: [...new Set(items)].sort(), valid: true };
+  }
+
+  function routeForMessageSet(identity, routes) {
+    const values = routes instanceof Map ? [...routes.values()] : [...routes];
+    const byMessage = routes instanceof Map ? routes : new Map(values.map((route) => [route.messageId, route]));
+    const members = [], unmapped = [];
+    let excludedCount = 0;
+    for (const id of [...new Set(identity.messageIds)].sort()) {
+      const route = byMessage.get(id);
+      if (!route || route.messageId !== id || !route.authorRole) { unmapped.push(id); continue; }
+      if (route.authorRole !== "assistant") { excludedCount += 1; continue; }
+      // Exact listed assistant node only: a sibling/final node is not inferred
+      // from search-ID order, timestamp, turn-key syntax, or another turn.
+      const peers = route.turnExchangeId
+        ? values.filter((item) => item.turnExchangeId === route.turnExchangeId) : [route];
+      members.push({ ...route,
+        turnThinkingEffort: route.thinkingEffort || peers.find((item) => item.thinkingEffort)?.thinkingEffort || null,
+        turnReasoningObserved: peers.some((item) => item.reasoningObserved),
+        turnToolObserved: peers.some((item) => item.toolObserved),
+        turnResolvedObserved: peers.some((item) => Boolean(item.resolved)),
+      });
+    }
+    const common = (key) => members.length && members.every((item) => item[key] === members[0][key])
+      ? members[0][key] || null : null;
+    const actualModels = [...new Set(members.filter((item) => item.actual).map((item) => canonicalModel(item.actual)))].sort();
+    const knownCount = members.filter((item) => item.actual).length;
+    const complete = members.length > 0 && knownCount === members.length
+      && !unmapped.length && !identity.invalidIdLists;
+    return {
+      messageId: members.length === 1 ? members[0].messageId : null,
+      turnExchangeId: common("turnExchangeId"),
+      actual: complete && actualModels.length === 1 ? actualModels[0] : null,
+      actualModels, memberRoutes: members, knownCount, unmappedMessageIds: unmapped,
+      excludedCount, invalidIdLists: identity.invalidIdLists || 0,
+      expected: common("expected"), requested: common("requested"), resolved: common("resolved"),
+      status: members.length ? (members.every((item) => item.status === members[0].status)
+        ? members[0].status : "mixed") : "unavailable",
+      thinkingEffort: common("thinkingEffort"), turnThinkingEffort: common("turnThinkingEffort"),
+      turnReasoningObserved: members.some((item) => item.turnReasoningObserved),
+      turnToolObserved: members.some((item) => item.turnToolObserved),
+      turnResolvedObserved: members.some((item) => item.turnResolvedObserved),
+      mismatch: members.some((item) => item.mismatch),
+      resolutionChanged: members.some((item) => item.resolutionChanged),
+      override: members.some((item) => item.override),
+      source: "exact assistant IDs from " + (identity.bindingSource || "DOM message set"),
+    };
+  }
+
+  function messageSetLabel(route) {
+    if (!route.memberRoutes || (route.memberRoutes.length === 1
+      && !route.unmappedMessageIds.length && !route.invalidIdLists)) return null;
+    const models = route.actualModels.map(modelLabel).join(" / ");
+    const count = route.memberRoutes.length;
+    const incomplete = route.knownCount < count || route.unmappedMessageIds.length || route.invalidIdLists;
+    if (incomplete) return [
+      "actual model: unknown", models ? `recorded: ${models}` : "",
+      `${route.knownCount}/${count} assistant models known`,
+      route.unmappedMessageIds.length ? `${route.unmappedMessageIds.length} unmatched ID(s)` : "",
+      route.invalidIdLists ? "invalid message-ID list" : "",
+    ].filter(Boolean).join(" · ");
+    if (!count) return "actual model: unknown · no matched assistant IDs";
+    return `${route.actualModels.length > 1 ? "actual models" : "actual model"}: ${models} · ${count} assistant messages`;
+  }
+
   function routeForIdentity(identity, routes) {
+    if (!identity.messageId && Array.isArray(identity.messageIds)) return routeForMessageSet(identity, routes);
     const values = routes instanceof Map ? [...routes.values()] : [...routes];
     const get = (key) => key && routes instanceof Map ? routes.get(key) : null;
     const domRoute = identity.modelSlug ? routeFromMetadata({ model_slug: identity.modelSlug }, {
@@ -338,6 +420,9 @@
       collectRoutes,
       chooseLatest,
       routeForIdentity,
+      parseMessageIds,
+      routeForMessageSet,
+      messageSetLabel,
       executionConcern,
     };
     return;
@@ -541,14 +626,19 @@
     '[data-message-role="assistant"]',
     '[data-turn="assistant"]',
     '[data-turn-role="assistant"]',
+    '[data-conversation-role="assistant"]',
   ].join(",");
   const MESSAGE_SELECTOR = "[data-message-id]";
+  const SEARCH_IDS_SELECTOR = "[data-chatgpt-search-message-ids]";
+  const FIELD_SELECTOR = '[data-turn-key], [data-conversation-role="assistant"], [data-chatgpt-agent-turn-start], ' + SEARCH_IDS_SELECTOR;
   const TURN_SELECTOR = "[data-turn-id], [data-turn-id-container]";
   const EXCLUDED_SELECTOR = [
     '[data-message-author-role="user"]', '[data-message-role="user"]',
     '[data-turn="user"]', '[data-turn-role="user"]',
+    '[data-conversation-role="user"]', '[data-user-message-bubble="true"]',
     '[data-message-author-role="tool"]', '[data-message-role="tool"]',
     '[data-turn="tool"]', '[data-turn-role="tool"]',
+    '[data-conversation-role="tool"]',
     'pre', 'code', '[contenteditable="true"]',
     '#chatgpt-route-indicator-host', '[data-chatgpt-actual-route]',
   ].join(",");
@@ -558,16 +648,92 @@
       "data-message-id", "data-message-author-role", "data-message-role",
       "data-turn", "data-turn-role", "data-turn-id", "data-turn-id-container",
       "data-message-model-slug", "data-message-status", "data-status",
+      "data-turn-key", "data-conversation-role", "data-chatgpt-agent-turn-start",
+      "data-chatgpt-search-message-ids", "data-user-message-bubble",
     ],
   };
+
+  function fieldRoot(node) {
+    let role = node.closest("[data-conversation-role]");
+    if (role && role.dataset.conversationRole !== "assistant") return null;
+    // Repeated role markers inside the same keyed reply are one ownership scope.
+    for (let parent = role?.parentElement?.closest("[data-conversation-role]"); parent;
+      parent = parent.parentElement?.closest("[data-conversation-role]")) {
+      if (parent.dataset.conversationRole !== "assistant"
+        || parent.closest("[data-turn-key]") !== role.closest("[data-turn-key]")) break;
+      role = parent;
+    }
+    const key = node.closest("[data-turn-key]");
+    if (key) {
+      if (role && key.contains(role)) return role;
+      const roles = [...key.querySelectorAll('[data-conversation-role="assistant"]')]
+        .filter((item) => item.closest("[data-turn-key]") === key
+          && item.parentElement?.closest('[data-conversation-role="assistant"]')?.closest("[data-turn-key]") !== key);
+      if (roles.length === 1) return roles[0];
+      if (roles.length > 1) return null;
+      return key;
+    }
+    if (role) return role;
+    const legacy = node.closest(ASSISTANT_SELECTOR);
+    if (legacy) return legacy;
+    const descendants = [...node.querySelectorAll('[data-conversation-role="assistant"]')]
+      .filter((item) => !item.closest("[data-turn-key]"));
+    if (descendants.length === 1) return descendants[0];
+    return node.matches(SEARCH_IDS_SELECTOR + ",[data-chatgpt-agent-turn-start]") ? node : null;
+  }
+
+  function fieldIdentity(node) {
+    const host = fieldRoot(node) || node;
+    const owners = new Set();
+    for (const item of [node, ...node.querySelectorAll(SEARCH_IDS_SELECTOR)]) {
+      if (item.matches(SEARCH_IDS_SELECTOR) && !item.closest(EXCLUDED_SELECTOR)
+        && (item === node || fieldRoot(item) === host)) owners.add(item);
+    }
+    // A list on the keyed parent is usable only if it has one assistant owner;
+    // do not lend one parent's whole list to several neighboring replies.
+    for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+      if (fieldRoot(parent) !== host) break;
+      if (parent.matches(SEARCH_IDS_SELECTOR)) owners.add(parent);
+      if (parent.matches("[data-turn-key]")) break;
+    }
+    const ids = new Set();
+    let invalidIdLists = 0;
+    for (const owner of owners) {
+      const parsed = parseMessageIds(owner.getAttribute("data-chatgpt-search-message-ids"));
+      if (!parsed.valid) invalidIdLists += 1;
+      for (const id of parsed.ids) ids.add(id);
+    }
+    const key = node.closest("[data-turn-key]");
+    if (!owners.size) {
+      // Marker/key values can be opaque. Only exact persisted assistant IDs can
+      // resolve them later; they are NOT turn_exchange_id aliases.
+      const markers = [node, ...node.querySelectorAll("[data-chatgpt-agent-turn-start]")]
+        .filter((item) => !item.closest(EXCLUDED_SELECTOR) && (item === node || fieldRoot(item) === host));
+      for (const value of [...markers.map((item) => item.getAttribute("data-chatgpt-agent-turn-start")), key?.getAttribute("data-turn-key")]) {
+        const parsed = parseMessageIds(value);
+        if (parsed.valid) for (const id of parsed.ids) {
+          const route = state.routes.get(id);
+          if (route?.messageId === id && route.authorRole === "assistant") ids.add(id);
+        }
+      }
+    }
+    return { messageIds: [...ids].sort(), invalidIdLists,
+      turnKey: key?.getAttribute("data-turn-key") || null,
+      bindingSource: owners.size ? "data-chatgpt-search-message-ids" : "exact marker/key ID",
+    };
+  }
 
   function assistantIdentity(node) {
     if (!node) return { messageId: null, turnId: null, modelSlug: null, status: null };
     const message = node.closest(MESSAGE_SELECTOR);
     const turn = node.closest(TURN_SELECTOR);
     const containerId = turn?.dataset.turnIdContainer;
+    const messageId = message?.dataset.messageId || null;
+    const field = !messageId && (node.matches(FIELD_SELECTOR) || node.closest("[data-turn-key],[data-conversation-role]")
+      || node.querySelector(SEARCH_IDS_SELECTOR)) ? fieldIdentity(node) : {};
     return {
-      messageId: message?.dataset.messageId || null,
+      ...field,
+      messageId,
       turnId: turn?.dataset.turnId || (containerId && !["true", "false"].includes(containerId) ? containerId : null),
       modelSlug: node.dataset.messageModelSlug || message?.dataset.messageModelSlug || null,
       status: node.dataset.messageStatus || node.dataset.status
@@ -597,6 +763,17 @@
     for (const node of document.querySelectorAll(TURN_SELECTOR)) {
       const id = node.dataset.turnId || node.dataset.turnIdContainer;
       if (state.routes.get(id)?.authorRole === "assistant" && eligible(node)) candidates.add(node);
+    }
+    for (const node of document.querySelectorAll(FIELD_SELECTOR)) {
+      const root = fieldRoot(node);
+      if (!root || !eligible(root)) continue;
+      if (!root.matches(ASSISTANT_SELECTOR) && root.querySelector('[data-user-message-bubble="true"]')) continue;
+      const identity = assistantIdentity(root);
+      const hasAssistantProof = identity.messageIds?.some((id) => {
+        const route = state.routes.get(id);
+        return route?.messageId === id && route.authorRole === "assistant";
+      });
+      if (root.matches(ASSISTANT_SELECTOR) || hasAssistantProof) candidates.add(root);
     }
     const redundant = new Set();
     for (const node of candidates) {
@@ -697,7 +874,18 @@
         target.appendChild(badge);
       }
       retained.add(badge);
-      if (route.actual) {
+      const identity = assistantIdentity(target);
+      const memberIds = route.memberRoutes?.map((item) => item.messageId) || (route.messageId ? [route.messageId] : []);
+      badge.dataset.routeMessageIds = JSON.stringify(memberIds);
+      badge.dataset.routeBinding = route.memberRoutes ? "assistant-message-set" : "exact-message";
+      badge.dataset.routeUnmatchedCount = String(route.unmappedMessageIds?.length || 0);
+      badge.dataset.routeInvalidLists = String(route.invalidIdLists || 0);
+      badge.dataset.routeTurnKey = identity.turnKey || "";
+      const setLabel = messageSetLabel(route);
+      if (setLabel) {
+        if (badge.textContent !== setLabel) badge.textContent = setLabel;
+        badge.style.color = route.actualModels.length > 1 || !route.actual ? "#d97706" : "#64748b";
+      } else if (route.actual) {
         const actual = modelLabel(route.actual);
         const status = route.status ? ` · ${route.status}` : "";
         const runtimeConcern = executionConcern(route);
@@ -736,6 +924,8 @@
       pill.className = "pill unknown";
       pill.textContent = "Actual · no reply matched";
       pill.dataset.focusedMessageId = identity.messageId || "";
+      pill.dataset.focusedMessageIds = "[]";
+      pill.dataset.focusedTurnKey = "";
       detail.innerHTML = `<div class="muted">No visible assistant response could be matched. Latest metadata is not substituted for the focused response.</div><div class="muted">Script ${VERSION} · ${state.routes.size} metadata records</div>`;
       return;
     }
@@ -745,7 +935,8 @@
     const strongWarning = route.mismatch || route.resolutionChanged || exceptional;
     const status = route.status ? ` · ${route.status}` : "";
     pill.className = `pill ${strongWarning ? "warn" : runtimeConcern ? "suspect" : actual ? "good" : "unknown"}`;
-    pill.textContent = actual
+    const setLabel = messageSetLabel(route);
+    pill.textContent = setLabel ? setLabel.replace(/^actual/, "Actual") : actual
       ? (route.mismatch && route.expected
         ? `⚠ Actual ${modelLabel(route.expected)} → ${actual}${status}`
         : runtimeConcern
@@ -753,17 +944,30 @@
           : `Actual · ${actual}${status}`)
       : `Actual · unknown${route.resolved ? ` · resolved ${modelLabel(route.resolved)}` : ""}${status}`;
     pill.dataset.focusedMessageId = identity.messageId || route.messageId || "";
+    pill.dataset.focusedMessageIds = JSON.stringify(route.memberRoutes?.map((item) => item.messageId) || (route.messageId ? [route.messageId] : []));
+    pill.dataset.focusedTurnKey = identity.turnKey || "";
     const row = (name, value, className = "") => `<div class="row"><span class="muted">${name}</span><span class="${className}">${escapeHtml(value || "—")}</span></div>`;
     detail.innerHTML = [
       row("script", VERSION),
+      row("binding", route.memberRoutes ? "exact assistant message set" : "individual message"),
+      ...(route.memberRoutes ? [
+        row("matched IDs", String(route.memberRoutes.length)),
+        row("excluded", String(route.excludedCount)),
+        row("unmatched", String(route.unmappedMessageIds.length)),
+        row("invalid lists", String(route.invalidIdLists)),
+        row("turn key", identity.turnKey ? identity.turnKey.slice(0, 24) : null),
+        ...route.memberRoutes.slice(0, 20).map((item) => row(item.messageId.slice(0, 8) + "…",
+          `${modelLabel(item.actual)}${item.status ? " · " + item.status : ""}`)),
+        route.memberRoutes.length > 20 ? row("more IDs", String(route.memberRoutes.length - 20)) : "",
+      ] : []),
       row("default", modelLabel(route.expected), route.mismatch ? "warnText" : "goodText"),
       row("requested", modelLabel(route.requested)),
       row("resolved", modelLabel(route.resolved)),
-      row("actual", actual || "unknown", strongWarning ? "warnText" : runtimeConcern ? "suspectText" : "goodText"),
+      row("actual", actual || (route.actualModels?.length > 1 ? "multiple (see matched IDs)" : "unknown"), strongWarning ? "warnText" : runtimeConcern ? "suspectText" : "goodText"),
       row("thinking", route.turnThinkingEffort || route.thinkingEffort),
       row("reasoning", route.turnReasoningObserved ? "observed" : "not observed"),
       row("tool signal", route.turnToolObserved ? "observed" : "not observed"),
-      row("status", route.status || "complete"),
+      row("status", route.status || (route.memberRoutes ? "no exception observed" : "complete")),
       row("message", (identity.messageId || route.messageId) ? `${(identity.messageId || route.messageId).slice(0, 8)}…` : "—"),
       row("turn", route.turnExchangeId ? `${route.turnExchangeId.slice(0, 8)}…` : "—"),
       row("source", route.source === "metadata"
@@ -773,7 +977,9 @@
       route.resolutionChanged ? '<div class="warnText" style="margin-top:6px">resolved route differs from the concrete model on this assistant message</div>' : "",
       runtimeConcern ? '<div class="suspectText" style="margin-top:6px">Suspected execution degradation: GPT-6 Pro is recorded, but this turn has no resolved-route, reasoning-lifecycle, or tool-execution evidence despite a nonzero thinking effort. This is not proof of a different model.</div>' : "",
       exceptional ? '<div class="warnText" style="margin-top:6px">generation did not complete normally; model is shown only when persisted evidence exists</div>' : "",
-      !route.actual ? '<div class="warnText" style="margin-top:6px">actual model is unavailable; the resolved route is not treated as execution proof</div>' : "",
+      !route.actual ? (route.memberRoutes
+        ? '<div class="warnText" style="margin-top:6px">No single unambiguous model for this message set. Known assistant-node models are listed above; neither ID order nor the turn key selects a final response.</div>'
+        : '<div class="warnText" style="margin-top:6px">actual model is unavailable; the resolved route is not treated as execution proof</div>') : "",
       '<div class="muted" style="margin-top:6px">Local display only · conversation text is neither stored nor transmitted.</div>',
     ].join("");
   }

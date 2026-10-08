@@ -311,6 +311,40 @@ assert.equal(toolOnly[0].authorRole, "tool");
 assert.equal(routeForIdentity({turnId: "tool-only-turn"}, new Map(toolOnly.map(r=>[routeKey(r),r]))).actual, null);
 assert.equal(mergeRoute(toolOnly[0], {messageId: "tool-only"}).authorRole, "tool");
 
+// Field-reported grouped IDs: accept only literal IDs, not attribute instructions.
+const {parseMessageIds, routeForMessageSet, messageSetLabel} = hook.exports;
+for (const value of ['a b', 'b,a,', '["b","a","a"]', '"b,a"']) {
+  const parsed = parseMessageIds(value);
+  assert.equal(parsed.valid, true);
+  assert.equal(parsed.ids.join(','), 'a,b');
+}
+for (const value of ['["a", 3]', '["a", {}]', '{"a":true}', '["a"', 'true', '<script>x</script>']) {
+  assert.equal(parseMessageIds(value).valid, false);
+}
+const fieldMap = new Map(collectRoutes({mapping: {
+ a:{message:{id:'a',author:{role:'assistant'},metadata:{model_slug:'gpt-6-pro'}}},
+ b:{message:{id:'b',author:{role:'assistant'},metadata:{model_slug:'gpt-6-luna'}}},
+ u:{message:{id:'u',author:{role:'user'},metadata:{model_slug:'gpt-6-sol'}}},
+ t:{message:{id:'t',author:{role:'tool'},metadata:{model_slug:'gpt-6-sol'}}},
+ empty:{message:{id:'empty',author:{role:'assistant'}}},
+}}).map(r=>[routeKey(r),r]));
+const field = routeForMessageSet({messageIds:['b','u','a','t']},fieldMap);
+assert.equal(field.actual, null);
+assert.equal(field.memberRoutes.map(r=>r.messageId).join(','), 'a,b');
+assert.equal(field.excludedCount, 2);
+assert.equal(field.messageId, null);
+assert.equal(field.actualModels.join(','), 'gpt-6-luna,gpt-6-pro');
+assert.equal(messageSetLabel(field),messageSetLabel(routeForMessageSet({messageIds:['t','a','u','b']},fieldMap)));
+assert.equal(routeForMessageSet({messageIds:['a','unknown']},fieldMap).actual, null);
+assert.equal(routeForMessageSet({messageIds:['a'],invalidIdLists:1},fieldMap).actual, null);
+assert.equal(routeForMessageSet({messageIds:['a']},fieldMap).actual, 'gpt-6-pro');
+assert.equal(routeForMessageSet({messageIds:['a','empty']},fieldMap).memberRoutes.length, 2);
+assert.equal(fieldMap.get('empty').actual, null);
+const unknownAuthor=routeFromMetadata({model_slug:'gpt-6-sol'}, {messageId:'unverified'});
+assert.equal(routeForMessageSet({messageIds:['unverified']},new Map([['unverified',unknownAuthor]])).unmappedMessageIds.length,1);
+// A mapping key or turn key equal to an ID is not sufficient evidence.
+assert.equal(routeForMessageSet({messageIds:['wrong']},new Map([['wrong',fieldMap.get('a')]])).memberRoutes.length,0);
+
 console.log(JSON.stringify({
   ok: true,
   routes: routes.length,

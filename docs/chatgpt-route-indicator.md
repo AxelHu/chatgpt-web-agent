@@ -4,6 +4,14 @@
 `chatgpt.com`. It makes persisted model-routing metadata visible while leaving the
 normal ChatGPT UI and request flow intact.
 
+Current release: **0.7.1**. The company-side 0.7.0 live test failed; the
+[field follow-up and company retest handoff](route-ui-field-20261008.md) documents
+the correction and its still-pending onsite acceptance. The new adapter handles
+`data-conversation-role`, `data-turn-key`, `data-chatgpt-agent-turn-start`, grouped
+`data-chatgpt-search-message-ids`, and `data-user-message-bubble`. Grouped IDs are
+exactly filtered by persisted assistant authorship, not by DOM order. Several
+models within one grouped reply remain explicitly several models.
+
 For the current operational interpretation of GPT-6/Astra -> GPT-5.4 fallback together with missing external/MCP tools, see [`chat-route-fallback-tool-profile.md`](chat-route-fallback-tool-profile.md).
 
 It reports the fields that ChatGPT itself persists on assistant nodes:
@@ -70,6 +78,7 @@ node --check userscripts/chatgpt-route-indicator.user.js
 node scripts/test-chatgpt-route-indicator.mjs
 # Optional DOM/network regression; requires Playwright and its Chromium installed:
 node scripts/test-chatgpt-route-indicator-browser.mjs
+ROUTE_TEST_BROWSER=firefox node scripts/test-chatgpt-route-indicator-browser.mjs
 ```
 Version 0.6 also adds a deliberately conservative execution-health warning for
 GPT-6 Pro/Astra. If a turn records a nonzero thinking effort but the whole turn
@@ -89,5 +98,5 @@ the available signed-in webpage was not obtained during this audit.
 
 Keep the existing script name and namespace; replace/update the installed script
 rather than enabling a second copy, then refresh ChatGPT. The expanded badge must
-show `script: 0.7.0`. A Git checkout or a published artifact does not by itself
+show `script: 0.7.1`. A Git checkout or a published artifact does not by itself
 update Tampermonkey, and installations pinned to a commit need an explicit update.
