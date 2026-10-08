@@ -1,0 +1,163 @@
+{
+  "baseline": {
+    "version": "0.6.1",
+    "sha256": "b712d4ea6bd0667d86dc79c5b1e31f403ac686868236b64cd16913a9c723a4e0",
+    "at": "2026-10-08T04:35:18.670Z",
+    "mode": "synthetic Chromium DOM/network regression, not a live ChatGPT acceptance test",
+    "checks": 0,
+    "cases": [
+      {
+        "name": "article markers without legacy author marker",
+        "ok": false,
+        "error": "page.waitForFunction: Timeout 4500ms exceeded.",
+        "snapshot": {
+          "labels": [],
+          "pill": "Actual \u00b7 GPT-6 Luna",
+          "focused": "b"
+        },
+        "pageErrors": []
+      }
+    ],
+    "ok": false,
+    "scenarios": 1
+  },
+  "candidate": {
+    "version": "0.7.0",
+    "sha256": "1a3c1d427ebd58e43fd5359bc7c42cbf23f45ea4753f290e23aa86b786df7de2",
+    "at": "2026-10-08T04:35:51.974Z",
+    "mode": "synthetic Chromium DOM/network regression, not a live ChatGPT acceptance test",
+    "checks": 104,
+    "cases": [
+      {
+        "name": "legacy model labels and viewport",
+        "ok": true
+      },
+      {
+        "name": "article markers without legacy author marker",
+        "ok": true
+      },
+      {
+        "name": "metadata-only message IDs exclude users and tools",
+        "ok": true
+      },
+      {
+        "name": "hybrid wrappers are deduplicated",
+        "ok": true
+      },
+      {
+        "name": "different phases in one turn keep exact models",
+        "ok": true
+      },
+      {
+        "name": "message identity and concrete DOM model on ancestor",
+        "ok": true
+      },
+      {
+        "name": "turn-only wrapper uses unambiguous exchange evidence",
+        "ok": true
+      },
+      {
+        "name": "ambiguous turn-only wrapper stays unknown",
+        "ok": true
+      },
+      {
+        "name": "unmatched layout must not show global latest model",
+        "ok": true
+      },
+      {
+        "name": "React replacement restores one label",
+        "ok": true
+      },
+      {
+        "name": "site badge removal restores label without duplication",
+        "ok": true
+      },
+      {
+        "name": "attribute-only message ID reuse and role change",
+        "ok": true
+      },
+      {
+        "name": "attribute-only turn ID reuse",
+        "ok": true
+      },
+      {
+        "name": "continuous streaming cannot starve rendering",
+        "ok": true
+      },
+      {
+        "name": "nested scroll viewport excludes clipped replies",
+        "ok": true
+      },
+      {
+        "name": "display contents message retains visible focus",
+        "ok": true
+      },
+      {
+        "name": "hidden message is not used as floating fallback",
+        "ok": true
+      },
+      {
+        "name": "same-count SPA navigation updates bindings",
+        "ok": true
+      },
+      {
+        "name": "late JSON response from old chat is discarded",
+        "ok": true
+      },
+      {
+        "name": "late SSE response from old chat is discarded",
+        "ok": true
+      },
+      {
+        "name": "background GET for another conversation is ignored",
+        "ok": true
+      },
+      {
+        "name": "SSE is observed without consuming original response",
+        "ok": true
+      },
+      {
+        "name": "resolved-only and cancelled responses remain honest",
+        "ok": true
+      },
+      {
+        "name": "user prose and code lookalikes do not get labels",
+        "ok": true
+      },
+      {
+        "name": "idle rendering does not trigger repeated fallback traffic",
+        "ok": true
+      },
+      {
+        "name": "turn node with exact assistant message ID",
+        "ok": true
+      },
+      {
+        "name": "flex column badge must not grow to message height",
+        "ok": true
+      },
+      {
+        "name": "short clipped response cannot steal floating focus",
+        "ok": true
+      },
+      {
+        "name": "long conversation keeps one badge per assistant",
+        "ok": true
+      },
+      {
+        "name": "new conversation transition before stream headers",
+        "ok": true
+      },
+      {
+        "name": "new conversation preserves metadata already observed",
+        "ok": true
+      },
+      {
+        "name": "new conversation stream cannot adopt unrelated navigation",
+        "ok": true
+      }
+    ],
+    "ok": true,
+    "scenarios": 32
+  }
+}
