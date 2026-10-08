@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT Actual Model Route
 // @namespace    https://chatgpt.com/
-// @version      0.7.2
+// @version      0.7.3
 // @description  Show the concrete model recorded on each ChatGPT assistant message without collecting conversation text.
 // @match        https://chatgpt.com/*
 // @run-at       document-start
@@ -12,7 +12,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.7.2";
+  const VERSION = "0.7.3";
   const testHook = globalThis.__CHATGPT_ROUTE_INDICATOR_TEST__;
   const GPT6_ALIASES = new Set(["gpt-6-pro", "gpt-6-astra", "gpt-6-astra-pro"]);
   const ROUTE_KEYS = ["default_model_slug", "requested_model_slug", "resolved_model_slug", "model_slug"];
@@ -430,6 +430,7 @@
 
   const state = {
     routes: new Map(),
+    recentConversations: new Map(),
     latest: null,
     path: location.pathname,
     provisionalConversationId: null,
@@ -455,15 +456,35 @@
     scheduleRender();
   }
 
+  function saveConversationMetadata(id) {
+    if (!id || !state.routes.size) return;
+    // The app caches inactive conversation pages. Keep only metadata for the
+    // three most recently departed conversations, never response text or auth.
+    // The active conversation remains uncapped; saved snapshots are bounded.
+    const records = [...state.routes.entries()].slice(-4000);
+    state.recentConversations.delete(id);
+    state.recentConversations.set(id, records);
+    while (state.recentConversations.size > 3) {
+      state.recentConversations.delete(state.recentConversations.keys().next().value);
+    }
+  }
+
   function syncNavigation() {
     if (state.path === location.pathname) return false;
     // Creating a chat changes / -> /c/ID while the same response is streaming.
     // Preserve only metadata explicitly bound by that creation response's ID.
+    const destination = conversationId();
+    const cached = destination && state.recentConversations.get(destination);
+    state.recentConversations.delete(destination);
+    saveConversationMetadata(conversationId(state.path));
     const creatingThisChat = !conversationId(state.path) && state.provisionalConversationId
       && state.provisionalConversationId === conversationId();
     state.path = location.pathname;
     state.epoch += 1;
-    if (!creatingThisChat) { state.routes.clear(); state.latest = null; }
+    if (!creatingThisChat) {
+      state.routes = new Map(cached || []);
+      state.latest = chooseLatest([...state.routes.values()]);
+    }
     state.provisionalConversationId = null;
     state.lastFallbackAt = 0;
     clearTimeout(state.fallbackTimer);
@@ -565,7 +586,7 @@
     const response = await nativeFetch(input, init);
     try {
       if (!url) return response;
-      const requestId = url.pathname.match(/\/conversation\/([0-9a-f-]{20,})(?:\/|$)/i)?.[1];
+      const requestId = url.pathname.match(/\/conversations?\/([0-9a-f-]{20,})(?:\/|$)/i)?.[1];
       if ((currentEpoch(epoch) || awaitingCreationId(epoch))
         && (!requestId || requestId === conversationId()) && shouldInspect(url, response)) {
         const clone = response.clone();

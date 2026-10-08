@@ -245,6 +245,26 @@ test('home DOM diagnostic distinguishes clip from actual visible text', {html:sr
  await waitField(page,'key','GPT-6 Pro / Astra');const probe=readFileSync(new URL('./inspect-chatgpt-route-indicator-dom.js',import.meta.url),'utf8');const result=await page.evaluate(probe);eq(result.counts.readableInlineBadges,1);eq(result.badges[0].insideScreenReaderOnly,false);eq(result.badges[0].hasReadableLayoutBox,true);
 });
 
+test('home SPA revisiting a cached page restores only its own metadata', {html:modern('same'),response:({url,state})=>url.pathname.endsWith(A)&&state.noAFetch?payload([]):payload([msg('same',url.pathname.endsWith(B)?'gpt-6-luna':'gpt-6-pro')])},async({page,state})=>{
+ await waitLabel(page,'same','GPT-6 Pro / Astra');state.noAFetch=true;
+ await page.evaluate(id=>history.pushState({},'',`/c/${id}`),B);await waitLabel(page,'same','GPT-6 Luna');
+ await page.evaluate(id=>history.pushState({},'',`/c/${id}`),A);await waitLabel(page,'same','GPT-6 Pro / Astra');eq((await snapshot(page)).labels.length,1);
+});
+test('home SPA background plural conversation GET cannot replace current metadata', {html:modern('a'),response:({url})=>payload([msg('a',url.pathname.endsWith(B)?'gpt-6-luna':'gpt-6-pro')])},async({page})=>{
+ await waitLabel(page,'a','GPT-6 Pro / Astra');await page.evaluate(id=>fetch(`/backend-api/conversations/${id}`).then(r=>r.json()),B);await page.waitForTimeout(120);ok((await snapshot(page)).labels[0].text.includes('GPT-6 Pro / Astra'));
+});
+
+const cacheIds=[A,B,'33333333-3333-3333-3333-333333333333','44444444-4444-4444-4444-444444444444','55555555-5555-5555-5555-555555555555'];
+const cacheModels=['gpt-6-pro','gpt-6-luna','gpt-6-sol','gpt-5-6-thinking','gpt-5-4-thinking'];
+const cacheLabels=['GPT-6 Pro / Astra','GPT-6 Luna','GPT-6 Sol','GPT-5.6 Thinking','GPT-5.4 Thinking'];
+for(const count of [4,5])test('home SPA bounded cache revisit after '+count+' conversations',{html:modern('same'),response:({url,state})=>state.noAFetch&&url.pathname.endsWith(A)?payload([]):payload([msg('same',cacheModels[cacheIds.findIndex(id=>url.pathname.endsWith(id))]||'gpt-6-pro')])},async({page,state})=>{
+ await waitLabel(page,'same',cacheLabels[0]);state.noAFetch=true;
+ for(let i=1;i<count;i++){await page.evaluate(id=>history.pushState({},'',`/c/${id}`),cacheIds[i]);await waitLabel(page,'same',cacheLabels[i]);}
+ await page.evaluate(id=>history.pushState({},'',`/c/${id}`),A);
+ if(count===4){await waitLabel(page,'same',cacheLabels[0]);ok((await snapshot(page)).labels[0].text.includes(cacheLabels[0]),'restore target before eviction on departure');}
+ else{await waitLabel(page,'same','unknown');ok(!(await snapshot(page)).labels[0].text.includes('GPT-'),'evicted chat must not borrow another model');}
+});
+
 const browser=await engine.launch({headless:true});
 try {
  for(const {name,spec,run} of cases){
