@@ -54,7 +54,7 @@ unchanged text bytes, native rejection equivalence, late/different-conversation
 isolation, navigation-loader ordering, and suppression of repeated 404/401 or idle
 fallback traffic. All previous visibility, cache, identity and SSE cases remain.
 
-Installed home acceptance of 0.7.4 is pending at this source checkpoint.
+Installed home acceptance of 0.7.4 is recorded below.
 See the accompanying JSON receipt for sanitized timing and test evidence.
 
 ## Browser API references
@@ -62,3 +62,22 @@ See the accompanying JSON receipt for sanitized timing and test evidence.
 - https://developer.mozilla.org/en-US/docs/Web/API/Response/clone
 - https://developer.mozilla.org/en-US/docs/Web/API/AbortController/abort
 - https://developer.mozilla.org/en-US/docs/Web/API/Response/text
+
+## Installed home Chrome result
+
+Updated the existing Tampermonkey script normally to 0.7.4, then loaded the same
+conversation shown in the screenshot. No temporary metadata observer remained in
+that document. Four completed assistant replies had readable, exactly matched
+labels and no unmatched IDs. Primary consumption count rose from 1 to 7 through
+normal app polling, with zero primary read errors, zero cloned reads, and no
+fallback requests needed. Route records rose from 574 to 579 as metadata updated.
+The recorded source was `page response.text()` throughout this check.
+
+This validates the fix on real current-page traffic, not only a synthetic DOM.
+It does not claim every company-side conversation has been retested or that a
+not-yet-returned model field can be shown instantly. The tool-submission/current
+turn was not forced to complete and no additional ChatGPT prompt was sent.
+
+Original ACGPower proxy was restored, the task-owned test window was closed, and
+the original Chrome process and user window remained present. The normally
+installed/enabled 0.7.4 script remains on the home Chrome profile.

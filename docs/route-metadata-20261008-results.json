@@ -171,5 +171,70 @@
       "sha256": "5ea950e5afffe37bb796d030e2034b21c04f73fae9655d257a4826f56e321de6"
     }
   },
-  "installed_live": "pending at source checkpoint"
+  "installed_live": {
+    "version": "0.7.4",
+    "acquisition": {
+      "primaryReads": 7,
+      "primaryErrors": 0,
+      "cloneReads": 0,
+      "cloneAborts": 0,
+      "lastSource": "page response.text()",
+      "lastUpdateAt": 1791452436713,
+      "fallback": "not attempted",
+      "routeRecords": 579,
+      "fallbackInFlight": false
+    },
+    "independentObserverAbsent": true,
+    "labels": [
+      {
+        "index": 0,
+        "label": "actual model: GPT-6 Pro / Astra",
+        "unmatched": 0,
+        "invalid": 0,
+        "ids": 1,
+        "readable": true
+      },
+      {
+        "index": 1,
+        "label": "actual model: GPT-6 Pro / Astra",
+        "unmatched": 0,
+        "invalid": 0,
+        "ids": 1,
+        "readable": true
+      },
+      {
+        "index": 2,
+        "label": "actual model: GPT-6 Pro / Astra",
+        "unmatched": 0,
+        "invalid": 0,
+        "ids": 1,
+        "readable": true
+      },
+      {
+        "index": 3,
+        "label": "actual model: GPT-6 Pro / Astra",
+        "unmatched": 0,
+        "invalid": 0,
+        "ids": 1,
+        "readable": true
+      }
+    ]
+  },
+  "cleanup": {
+    "browser_restarted": false,
+    "task_window_closed": true,
+    "original_windows": [
+      {
+        "preserved": true,
+        "handle": 3021968
+      }
+    ],
+    "chrome_pid": 67036,
+    "chrome_still_running": true
+  },
+  "proxy_restored": {
+    "error": null,
+    "mode": "pac_script",
+    "local8123": true
+  }
 }
