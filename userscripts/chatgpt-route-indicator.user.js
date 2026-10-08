@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT Actual Model Route
 // @namespace    https://chatgpt.com/
-// @version      0.6.1
+// @version      0.7.0
 // @description  Show the concrete model recorded on each ChatGPT assistant message without collecting conversation text.
 // @match        https://chatgpt.com/*
 // @run-at       document-start
@@ -12,6 +12,7 @@
 (function () {
   "use strict";
 
+  const VERSION = "0.7.0";
   const testHook = globalThis.__CHATGPT_ROUTE_INDICATOR_TEST__;
   const GPT6_ALIASES = new Set(["gpt-6-pro", "gpt-6-astra", "gpt-6-astra-pro"]);
   const ROUTE_KEYS = ["default_model_slug", "requested_model_slug", "resolved_model_slug", "model_slug"];
@@ -114,6 +115,7 @@
       requested,
       actual,
       resolved,
+      authorRole,
       thinkingEffort,
       reasoningStatus,
       reasoningObserved,
@@ -152,6 +154,7 @@
       requested: next.requested || previous.requested || null,
       actual: next.actual || previous.actual || null,
       resolved: next.resolved || previous.resolved || null,
+      authorRole: next.authorRole || previous.authorRole || null,
       thinkingEffort: next.thinkingEffort || previous.thinkingEffort || null,
       reasoningStatus: next.reasoningStatus || previous.reasoningStatus || null,
       reasoningObserved: Boolean(previous.reasoningObserved || next.reasoningObserved),
@@ -238,7 +241,9 @@
       source: "dom-message-model",
       status: identity.status,
     }) : null;
+    const assistantRoute = (route) => route && (!route.authorRole || route.authorRole === "assistant");
     let exact = get(identity.messageId) || get(identity.turnId) || null;
+    if (!assistantRoute(exact)) exact = null;
     let result = exact;
     if (exact && domRoute) {
       result = mergeRoute(domRoute, exact);
@@ -247,9 +252,25 @@
       result = domRoute;
     }
 
+    // A redesigned turn wrapper may expose only the exchange ID. Use it only
+    // when concrete assistant evidence in that exchange is unambiguous. Never
+    // guess by DOM order, conversation-turn-N, or the globally latest message.
+    if (!result && identity.turnId) {
+      const peers = values.filter((route) => assistantRoute(route)
+        && route.actual && route.turnExchangeId === identity.turnId);
+      const models = new Set(peers.map((route) => canonicalModel(route.actual)));
+      if (models.size === 1) {
+        const sibling = chooseLatest(peers);
+        result = { ...sibling, messageId: identity.messageId || null,
+          status: exceptionalStatus({}, { status: identity.status }) || sibling.status,
+          source: "turn sibling metadata" };
+      }
+    }
+
     if (result && !result.actual && result.turnExchangeId) {
       const sibling = values
         .filter((route) => route !== exact
+          && assistantRoute(route)
           && route.actual
           && route.turnExchangeId === result.turnExchangeId)
         .sort((left, right) => (left.createTime || 0) - (right.createTime || 0))
@@ -325,7 +346,11 @@
   const state = {
     routes: new Map(),
     latest: null,
-    lastConversationId: null,
+    path: location.pathname,
+    provisionalConversationId: null,
+    epoch: 0,
+    observer: null,
+    fallbackDue: 0,
     lastFallbackAt: 0,
     fallbackTimer: null,
     renderTimer: null,
@@ -345,28 +370,72 @@
     scheduleRender();
   }
 
-  function inspectObject(value) {
+  function syncNavigation() {
+    if (state.path === location.pathname) return false;
+    // Creating a chat changes / -> /c/ID while the same response is streaming.
+    // Preserve only metadata explicitly bound by that creation response's ID.
+    const creatingThisChat = !conversationId(state.path) && state.provisionalConversationId
+      && state.provisionalConversationId === conversationId();
+    state.path = location.pathname;
+    state.epoch += 1;
+    if (!creatingThisChat) { state.routes.clear(); state.latest = null; }
+    state.provisionalConversationId = null;
+    state.lastFallbackAt = 0;
+    clearTimeout(state.fallbackTimer);
+    state.fallbackTimer = null;
+    scheduleRender();
+    scheduleFallback(250);
+    return true;
+  }
+
+  function currentEpoch(source) {
+    syncNavigation();
+    if (typeof source === "number") return source === state.epoch;
+    if (source.epoch === state.epoch) return true;
+    if (source.creating && source.createdId && source.createdId === conversationId()
+      && source.epoch + 1 === state.epoch) {
+      source.epoch = state.epoch;
+      source.creating = false;
+      return true;
+    }
+    return false;
+  }
+
+  function awaitingCreationId(source) {
+    return typeof source === "object" && source.creating && !source.createdId
+      && source.epoch + 1 === state.epoch && Boolean(conversationId());
+  }
+
+  function inspectObject(value, epoch = state.epoch) {
     try {
+      if (typeof epoch === "object" && epoch.creating && !epoch.createdId
+        && typeof value?.conversation_id === "string") epoch.createdId = value.conversation_id;
+      if (!currentEpoch(epoch)) return;
+      const id = conversationId();
+      if (!id && typeof epoch === "object" && epoch.creating && epoch.createdId) {
+        state.provisionalConversationId = epoch.createdId;
+      }
+      if (id && typeof value?.conversation_id === "string" && value.conversation_id !== id) return;
       rememberRoutes(collectRoutes(value));
     } catch (_) {
       // This observer must never affect ChatGPT itself.
     }
   }
 
-  function parseEventBlock(block) {
+  function parseEventBlock(block, epoch) {
     const data = block.split(/\r?\n/)
       .filter((line) => line.startsWith("data:"))
       .map((line) => line.slice(5).trim())
       .join("\n");
     if (!data || data === "[DONE]") return;
-    try { inspectObject(JSON.parse(data)); } catch (_) {}
+    try { inspectObject(JSON.parse(data), epoch); } catch (_) {}
   }
 
-  async function inspectEventStream(response) {
+  async function inspectEventStream(response, epoch) {
     if (!response.body || typeof TextDecoderStream === "undefined") {
       try {
         const text = await response.text();
-        for (const block of text.split(/\r?\n\r?\n/)) parseEventBlock(block);
+        for (const block of text.split(/\r?\n\r?\n/)) parseEventBlock(block, epoch);
       } catch (_) {}
       return;
     }
@@ -376,16 +445,17 @@
       for (;;) {
         const { value, done } = await reader.read();
         if (done) break;
+        if (!currentEpoch(epoch) && !awaitingCreationId(epoch)) { await reader.cancel(); break; }
         buffer += value;
         for (;;) {
           const match = /\r?\n\r?\n/.exec(buffer);
           if (!match) break;
           const block = buffer.slice(0, match.index);
           buffer = buffer.slice(match.index + match[0].length);
-          parseEventBlock(block);
+          parseEventBlock(block, epoch);
         }
       }
-      if (buffer.trim()) parseEventBlock(buffer);
+      if (buffer.trim()) parseEventBlock(buffer, epoch);
     } catch (_) {}
   }
 
@@ -400,29 +470,43 @@
 
   const nativeFetch = window.fetch.bind(window);
   window.fetch = async function routeAwareFetch(input, init) {
+    syncNavigation();
+    let url = null;
+    try { url = new URL(typeof input === "string" || input instanceof URL ? input : input.url, location.href); } catch (_) {}
+    const epoch = { epoch: state.epoch, createdId: null,
+      creating: !conversationId() && url?.origin === location.origin
+        && /^\/backend-api\/(?:f\/)?conversation\/?$/.test(url.pathname)
+        && String(init?.method || input?.method || "GET").toUpperCase() === "POST" };
     const response = await nativeFetch(input, init);
     try {
-      const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url, location.href);
-      if (shouldInspect(url, response)) {
+      if (!url) return response;
+      const requestId = url.pathname.match(/\/conversation\/([0-9a-f-]{20,})(?:\/|$)/i)?.[1];
+      if ((currentEpoch(epoch) || awaitingCreationId(epoch))
+        && (!requestId || requestId === conversationId()) && shouldInspect(url, response)) {
         const clone = response.clone();
         const contentType = clone.headers.get("content-type") || "";
-        if (contentType.includes("text/event-stream")) void inspectEventStream(clone);
-        else if (contentType.includes("json")) void clone.json().then(inspectObject).catch(() => {});
+        if (contentType.includes("text/event-stream")) void inspectEventStream(clone, epoch);
+        else if (contentType.includes("json")) void clone.json().then((value) => inspectObject(value, epoch)).catch(() => {});
       }
     } catch (_) {}
     return response;
   };
 
-  function conversationId() {
-    const match = location.pathname.match(/\/c\/([0-9a-f-]{20,})/i);
+  function conversationId(path = location.pathname) {
+    const match = path.match(/\/c\/([0-9a-f-]{20,})/i);
     return match ? match[1] : null;
   }
 
   async function fetchConversationFallback() {
+    syncNavigation();
+    const epoch = state.epoch;
     const id = conversationId();
     if (!id) return;
     const now = Date.now();
-    if (now - state.lastFallbackAt < 3000) return;
+    if (now - state.lastFallbackAt < 3000) {
+      scheduleFallback(3000 - (now - state.lastFallbackAt));
+      return;
+    }
     state.lastFallbackAt = now;
     const candidates = [
       `/backend-api/conversation/${encodeURIComponent(id)}`,
@@ -431,55 +515,147 @@
     for (const path of candidates) {
       try {
         const response = await nativeFetch(path, { credentials: "include", cache: "no-store" });
+        if (!currentEpoch(epoch)) return;
         if (!response.ok) continue;
         const contentType = response.headers.get("content-type") || "";
         if (!contentType.includes("json")) continue;
-        inspectObject(await response.json());
+        inspectObject(await response.json(), epoch);
         return;
       } catch (_) {}
     }
   }
 
   function scheduleFallback(delay = 1200) {
+    const due = Date.now() + delay;
+    if (state.fallbackTimer && state.fallbackDue <= due) return;
     clearTimeout(state.fallbackTimer);
-    state.fallbackTimer = setTimeout(() => void fetchConversationFallback(), delay);
+    state.fallbackDue = due;
+    state.fallbackTimer = setTimeout(() => {
+      state.fallbackTimer = null;
+      void fetchConversationFallback();
+    }, delay);
   }
+
+  const ASSISTANT_SELECTOR = [
+    '[data-message-author-role="assistant"]',
+    '[data-message-role="assistant"]',
+    '[data-turn="assistant"]',
+    '[data-turn-role="assistant"]',
+  ].join(",");
+  const MESSAGE_SELECTOR = "[data-message-id]";
+  const TURN_SELECTOR = "[data-turn-id], [data-turn-id-container]";
+  const EXCLUDED_SELECTOR = [
+    '[data-message-author-role="user"]', '[data-message-role="user"]',
+    '[data-turn="user"]', '[data-turn-role="user"]',
+    '[data-message-author-role="tool"]', '[data-message-role="tool"]',
+    '[data-turn="tool"]', '[data-turn-role="tool"]',
+    'pre', 'code', '[contenteditable="true"]',
+    '#chatgpt-route-indicator-host', '[data-chatgpt-actual-route]',
+  ].join(",");
+  const OBSERVER_OPTIONS = {
+    subtree: true, childList: true, attributes: true,
+    attributeFilter: [
+      "data-message-id", "data-message-author-role", "data-message-role",
+      "data-turn", "data-turn-role", "data-turn-id", "data-turn-id-container",
+      "data-message-model-slug", "data-message-status", "data-status",
+    ],
+  };
 
   function assistantIdentity(node) {
     if (!node) return { messageId: null, turnId: null, modelSlug: null, status: null };
-    const turn = node.closest("[data-turn-id], [data-turn-id-container]");
+    const message = node.closest(MESSAGE_SELECTOR);
+    const turn = node.closest(TURN_SELECTOR);
+    const containerId = turn?.dataset.turnIdContainer;
     return {
-      messageId: node.dataset.messageId || null,
-      turnId: turn?.dataset.turnId || turn?.dataset.turnIdContainer || null,
-      modelSlug: node.dataset.messageModelSlug || null,
-      status: node.dataset.messageStatus || node.dataset.status || null,
+      messageId: message?.dataset.messageId || null,
+      turnId: turn?.dataset.turnId || (containerId && !["true", "false"].includes(containerId) ? containerId : null),
+      modelSlug: node.dataset.messageModelSlug || message?.dataset.messageModelSlug || null,
+      status: node.dataset.messageStatus || node.dataset.status
+        || message?.dataset.messageStatus || message?.dataset.status || null,
     };
+  }
+
+  function assistantNodes() {
+    const candidates = new Set();
+    const eligible = (node) => {
+      if (node.closest(EXCLUDED_SELECTOR)) return false;
+      const route = state.routes.get(assistantIdentity(node).messageId);
+      return !route?.authorRole || route.authorRole === "assistant";
+    };
+    for (const root of document.querySelectorAll(ASSISTANT_SELECTOR)) {
+      if (!eligible(root)) continue;
+      const messages = [...root.querySelectorAll(MESSAGE_SELECTOR)].filter(eligible);
+      if (root.matches(MESSAGE_SELECTOR) || !messages.length) candidates.add(root);
+      for (const node of messages) candidates.add(node);
+    }
+    // When the author DOM marker is gone entirely, the exact persisted message
+    // ID and assistant author role are sufficient. User/tool IDs are not.
+    for (const node of document.querySelectorAll(MESSAGE_SELECTOR)) {
+      if (state.routes.get(node.dataset.messageId)?.authorRole === "assistant" && eligible(node)) candidates.add(node);
+    }
+    // Some layouts put the assistant message ID directly on the turn element.
+    for (const node of document.querySelectorAll(TURN_SELECTOR)) {
+      const id = node.dataset.turnId || node.dataset.turnIdContainer;
+      if (state.routes.get(id)?.authorRole === "assistant" && eligible(node)) candidates.add(node);
+    }
+    const redundant = new Set();
+    for (const node of candidates) {
+      const id = assistantIdentity(node).messageId;
+      for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+        if (candidates.has(parent) && (!parent.matches(MESSAGE_SELECTOR)
+          || assistantIdentity(parent).messageId === id)) redundant.add(parent);
+      }
+    }
+    return [...candidates].filter((node) => !redundant.has(node));
   }
 
   function routeForAssistant(node) {
     return routeForIdentity(assistantIdentity(node), state.routes);
   }
 
-  function focusedAssistant() {
-    const assistants = [...document.querySelectorAll('[data-message-author-role="assistant"]')];
+  function focusedAssistant(assistants) {
     if (!assistants.length) return null;
     const viewportHeight = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
     const viewportCenter = viewportHeight / 2;
     let best = null;
     let bestScore = Number.NEGATIVE_INFINITY;
+    const clipping = new Map();
+    const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
     for (const node of assistants) {
-      const rect = node.getBoundingClientRect();
-      const visibleHeight = Math.max(0, Math.min(rect.bottom, viewportHeight) - Math.max(rect.top, 0));
-      if (visibleHeight <= 0) continue;
+      const style = getComputedStyle(node);
+      if (style.visibility === "hidden" || style.display === "none") continue;
+      let rect = node.getBoundingClientRect();
+      // display:contents has no own box, but its rendered reply still occupies
+      // the viewport. Measure its contents rather than the badge alone.
+      if (!rect.width && !rect.height && style.display === "contents") {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        rect = range.getBoundingClientRect();
+      }
+      let top = Math.max(rect.top, 0), bottom = Math.min(rect.bottom, viewportHeight);
+      let left = Math.max(rect.left, 0), right = Math.min(rect.right, viewportWidth);
+      for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+        if (!clipping.has(parent)) {
+          const css = getComputedStyle(parent);
+          clipping.set(parent, { rect: parent.getBoundingClientRect(),
+            x: css.display !== "contents" && /auto|scroll|hidden|clip/.test(css.overflowX),
+            y: css.display !== "contents" && /auto|scroll|hidden|clip/.test(css.overflowY) });
+        }
+        const clip = clipping.get(parent);
+        if (clip.y) { top = Math.max(top, clip.rect.top); bottom = Math.min(bottom, clip.rect.bottom); }
+        if (clip.x) { left = Math.max(left, clip.rect.left); right = Math.min(right, clip.rect.right); }
+      }
+      const visibleHeight = Math.max(0, bottom - top);
+      if (visibleHeight <= 0 || right <= left) continue;
       const visibleRatio = visibleHeight / Math.max(1, Math.min(rect.height || visibleHeight, viewportHeight));
-      const center = Math.max(0, Math.min(viewportHeight, (rect.top + rect.bottom) / 2));
+      const center = (top + bottom) / 2;
       const score = visibleRatio * 10000 - Math.abs(center - viewportCenter);
       if (score > bestScore) {
         best = node;
         bestScore = score;
       }
     }
-    return best || assistants.at(-1) || null;
+    return best;
   }
 
   function ensurePanel() {
@@ -487,6 +663,7 @@
     if (host) return host.shadowRoot;
     host = document.createElement("div");
     host.id = "chatgpt-route-indicator-host";
+    host.dataset.scriptVersion = VERSION;
     host.style.cssText = "position:fixed;right:18px;bottom:18px;z-index:2147483647;pointer-events:none";
     const shadow = host.attachShadow({ mode: "open" });
     shadow.innerHTML = `
@@ -504,8 +681,8 @@
     return shadow;
   }
 
-  function renderInline() {
-    const assistants = document.querySelectorAll('[data-message-author-role="assistant"]');
+  function renderInline(assistants) {
+    const retained = new Set();
     for (const target of assistants) {
       const route = routeForAssistant(target);
       let badge = target.querySelector(":scope > [data-chatgpt-actual-route]");
@@ -516,9 +693,10 @@
       if (!badge) {
         badge = document.createElement("div");
         badge.dataset.chatgptActualRoute = "true";
-        badge.style.cssText = "margin:6px 0 2px;font:11px/1.4 ui-sans-serif,system-ui;color:#64748b";
+        badge.style.cssText = "display:block;flex:0 0 auto;align-self:stretch;grid-column:1/-1;width:100%;margin:6px 0 2px;font:11px/1.4 ui-sans-serif,system-ui;color:#64748b";
         target.appendChild(badge);
       }
+      retained.add(badge);
       if (route.actual) {
         const actual = modelLabel(route.actual);
         const status = route.status ? ` · ${route.status}` : "";
@@ -539,28 +717,32 @@
         if (badge.style.color !== color) badge.style.color = color;
       }
     }
+    for (const badge of document.querySelectorAll('[data-chatgpt-actual-route="true"]')) {
+      if (!retained.has(badge)) badge.remove();
+    }
   }
 
-  function render() {
+  function renderPage() {
+    syncNavigation();
     const shadow = ensurePanel();
     const pill = shadow.getElementById("pill");
     const detail = shadow.getElementById("detail");
-    renderInline();
-    const target = focusedAssistant();
+    const assistants = assistantNodes();
+    renderInline(assistants);
+    const target = focusedAssistant(assistants);
     const identity = assistantIdentity(target);
-    const route = target ? routeForAssistant(target) : state.latest;
+    const route = target ? routeForAssistant(target) : null;
     if (!route) {
       pill.className = "pill unknown";
-      pill.textContent = "Actual · unknown";
+      pill.textContent = "Actual · no reply matched";
       pill.dataset.focusedMessageId = identity.messageId || "";
-      detail.innerHTML = '<div class="muted">No model metadata is available for the focused assistant response.</div>';
+      detail.innerHTML = `<div class="muted">No visible assistant response could be matched. Latest metadata is not substituted for the focused response.</div><div class="muted">Script ${VERSION} · ${state.routes.size} metadata records</div>`;
       return;
     }
     const actual = route.actual ? modelLabel(route.actual) : null;
     const exceptional = route.status && route.status !== "unavailable";
     const runtimeConcern = executionConcern(route);
     const strongWarning = route.mismatch || route.resolutionChanged || exceptional;
-    const warn = strongWarning || runtimeConcern;
     const status = route.status ? ` · ${route.status}` : "";
     pill.className = `pill ${strongWarning ? "warn" : runtimeConcern ? "suspect" : actual ? "good" : "unknown"}`;
     pill.textContent = actual
@@ -573,6 +755,7 @@
     pill.dataset.focusedMessageId = identity.messageId || route.messageId || "";
     const row = (name, value, className = "") => `<div class="row"><span class="muted">${name}</span><span class="${className}">${escapeHtml(value || "—")}</span></div>`;
     detail.innerHTML = [
+      row("script", VERSION),
       row("default", modelLabel(route.expected), route.mismatch ? "warnText" : "goodText"),
       row("requested", modelLabel(route.requested)),
       row("resolved", modelLabel(route.resolved)),
@@ -599,45 +782,52 @@
     return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
   }
 
+  function render() {
+    // Do not observe our own label insertions. Site removals/replacements still
+    // trigger the observer, allowing React/virtualized turns to recover labels.
+    state.observer?.disconnect();
+    try { renderPage(); }
+    finally { state.observer?.observe(document.documentElement, OBSERVER_OPTIONS); }
+  }
+
   function scheduleRender() {
-    clearTimeout(state.renderTimer);
-    state.renderTimer = setTimeout(render, 50);
+    // A trailing-only debounce can starve during continuous streaming/scrolling.
+    if (state.renderTimer) return;
+    state.renderTimer = setTimeout(() => {
+      state.renderTimer = null;
+      render();
+    }, 50);
   }
 
   function observePage() {
     ensurePanel();
     scheduleRender();
     scheduleFallback(350);
-    let lastUrl = location.href;
-    let lastAssistantCount = 0;
     const observer = new MutationObserver(() => {
-      const url = location.href;
-      const count = document.querySelectorAll('[data-message-author-role="assistant"]').length;
-      if (url !== lastUrl) {
-        lastUrl = url;
-        const id = conversationId();
-        if (id !== state.lastConversationId) {
-          state.lastConversationId = id;
-          state.routes.clear();
-          state.latest = null;
-          scheduleRender();
-        }
-        scheduleFallback(250);
-      } else if (count !== lastAssistantCount) {
-        lastAssistantCount = count;
-        scheduleRender();
-        scheduleFallback(900);
-      } else {
-        scheduleRender();
-        scheduleFallback(1500);
-      }
+      const navigated = syncNavigation();
+      scheduleRender();
+      if (!navigated) scheduleFallback(1500);
     });
-    observer.observe(document.documentElement, { subtree: true, childList: true });
+    state.observer = observer;
+    observer.observe(document.documentElement, OBSERVER_OPTIONS);
+    // SPA navigation need not change the assistant count or mutate the DOM yet.
+    for (const method of ["pushState", "replaceState"]) {
+      const original = history[method];
+      history[method] = function (...args) {
+        const result = Reflect.apply(original, this, args);
+        syncNavigation();
+        return result;
+      };
+    }
     document.addEventListener("scroll", scheduleRender, { passive: true, capture: true });
     window.addEventListener("resize", scheduleRender, { passive: true });
-    window.addEventListener("popstate", () => scheduleFallback(250), { passive: true });
+    window.addEventListener("popstate", () => {
+      syncNavigation();
+      scheduleRender();
+      scheduleFallback(250);
+    }, { passive: true });
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) scheduleFallback(350);
+      if (!document.hidden) { scheduleRender(); scheduleFallback(350); }
     }, { passive: true });
   }
 
