@@ -100,3 +100,18 @@ Keep the existing script name and namespace; replace/update the installed script
 rather than enabling a second copy, then refresh ChatGPT. The expanded badge must
 show `script: 0.7.1`. A Git checkout or a published artifact does not by itself
 update Tampermonkey, and installations pinned to a commit need an explicit update.
+
+## 0.7.3 — home real-account acceptance
+
+The real page uses an sr-only role heading. Labels are now mounted on the owning
+visible search-ID container while identity still comes from the semantic marker.
+Hidden cached page surfaces are excluded. A bounded, metadata-only, per-conversation
+memory cache restores a recently visited chat without borrowing another chat's
+model, and plural conversation URL paths are included in the response identity
+guard. Nothing is written to local/session storage and credentials are not retained.
+
+Installed **0.7.3** passed the home Chrome real-account checks, including full reload
+and back-navigation. See [the live acceptance](route-ui-home-20261008.md), not only
+the earlier synthetic results. Update the existing script, do not enable duplicate
+copies. Browser userscript permission and Tampermonkey's master switch both need
+to be enabled. The expanded model badge identifies version 0.7.3.

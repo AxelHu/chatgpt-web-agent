@@ -1,3 +1,8 @@
+> Final installed version: **0.7.3**. Real-account home Chrome acceptance passed
+> for visible labels, independent metadata comparison, cached navigation, scroll
+> focus and full reload. Earlier checkpoints below record the failures found
+> during testing; they are not the final acceptance status.
+
 # Home Chrome real-account acceptance — 2026-10-08
 
 ## Confirmed failure in 0.7.1
@@ -56,3 +61,40 @@ responses and retains only message ID, role and concrete model for comparison.
 Chromium and Firefox each pass 62 scenarios / 232 checks, including negative
 cache-eviction, revisit and background-plural-response tests. Installed 0.7.3 real
 acceptance is pending at this checkpoint.
+
+## Final installed home acceptance
+
+The existing Chrome Google sign-in succeeded. The fixed script was installed
+through Tampermonkey's normal update confirmation, not pasted into the webpage.
+Chrome's per-extension Allow User Scripts setting and Tampermonkey's separate
+master switch had both been disabled and were enabled for this test/install.
+
+Two real conversations were tested. One had two completed assistant replies with
+concrete models `gpt-6-thinking` and `gpt-5-6-thinking`; both labels were 768 CSS px
+wide and about 15.4 px high, outside the sr-only heading. The other had three
+completed replies; all three exact assistant IDs and concrete `gpt-6-pro` values
+were independently compared with metadata from cloned normal application JSON
+responses. No request credentials or conversation text were exported.
+
+Navigation to the other chat and back retained the correct models and showed only
+the active page's labels, despite hidden cached conversation DOMs still existing.
+First → last → first scrolling checked exact focused-ID equality, readable width,
+viewport position, exclusion from sr-only, and center-point hit testing: passed.
+After a full reload, the independent observer was absent and all these checks
+passed again on the installed 0.7.3 script. This separates real installation
+acceptance from temporary diagnostic instrumentation.
+
+[Structured acceptance receipt](route-ui-home-20261008-results.json). Synthetic
+regression is additionally 62 scenarios / 232 checks in each of Chromium/Firefox;
+it is not substituted for the real checks above. Company-side revalidation remains
+a separate environment; use 0.7.3 rather than the unsuccessful 0.7.1.
+
+## Cleanup
+
+The original ZeroOmega **acgpower** profile was restored after testing. Its toolbar
+again identified the localhost:8123 PAC configuration. The task-owned test window
+was closed, and the original Chrome window and PID were verified still present;
+no browser restart or user-tab closure occurred. The normal Google login and the
+installed/enabled 0.7.3 script remain available. Testing submitted no new ChatGPT
+prompt. The native inline-label crop was visually reviewed; only that crop is used
+as screenshot evidence, not the rejected floating crop or any full private page.
