@@ -4,7 +4,7 @@
 `chatgpt.com`. It makes persisted model-routing metadata visible while leaving the
 normal ChatGPT UI and request flow intact.
 
-Current release: **0.7.1**. The company-side 0.7.0 live test failed; the
+Current release: **0.7.4**. See [the metadata acquisition fix](route-metadata-20261008.md). The company-side 0.7.0 live test failed; the
 [field follow-up and company retest handoff](route-ui-field-20261008.md) documents
 the correction and its still-pending onsite acceptance. The new adapter handles
 `data-conversation-role`, `data-turn-key`, `data-chatgpt-agent-turn-start`, grouped
@@ -32,7 +32,7 @@ assistant node with `resolved_model_slug: gpt-5-4-auto-thinking` and
 the Auto value remains visible in the resolved row. Resolved/requested values are
 never relabeled as actual when `model_slug` is absent.
 
-The script observes cloned same-origin ChatGPT conversation/SSE responses and has a
+The script observes successful primary JSON/text consumption and cloned same-origin SSE responses, and has a
 coalesced, rate-limited same-origin conversation-GET fallback after navigation or assistant UI
 changes. It never sends data to another origin. It stores only route metadata in
 memory for the current tab and does not retain prompt/response text.
@@ -115,3 +115,11 @@ and back-navigation. See [the live acceptance](route-ui-home-20261008.md), not o
 the earlier synthetic results. Update the existing script, do not enable duplicate
 copies. Browser userscript permission and Tampermonkey's master switch both need
 to be enabled. The expanded model badge identifies version 0.7.3.
+
+## 0.7.4 — primary response consumption
+
+Metadata now comes primarily from the JSON/text successfully consumed by the page,
+not a duplicate read that can be aborted by the app after its own read completes.
+The expanded badge and read-only diagnostic include acquisition counters/source.
+Unsupported legacy fallback endpoints are no longer retried indefinitely. No auth
+credentials are acquired or replayed; missing model evidence remains unknown.

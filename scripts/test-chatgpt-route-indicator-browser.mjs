@@ -265,6 +265,65 @@ for(const count of [4,5])test('home SPA bounded cache revisit after '+count+' co
  else{await waitLabel(page,'same','unknown');ok(!(await snapshot(page)).labels[0].text.includes('GPT-'),'evicted chat must not borrow another model');}
 });
 
+
+const abortCloneHook=`window.savedNativeFetch=window.fetch;const f=window.fetch;window.fetch=async function(...a){const r=await Reflect.apply(f,this,a);if(String(a[0]).includes('primary=1')){r.clone=()=>new Response(new ReadableStream({start(c){setTimeout(()=>c.error(new DOMException('cancelled after primary read','AbortError')),10)}}),{headers:{'content-type':'application/json'}});}return r;};`;
+for(const method of ['json','text'])test('metadata primary '+method+' succeeds while duplicate clone is aborted',{
+ html:modern('a'),beforeScript:abortCloneHook,response:({url})=>url.searchParams.has('primary')?payload([msg('a','gpt-6-luna')],A):payload([]),
+},async({page})=>{
+ const result=await page.evaluate(async({A,method})=>{const r=await fetch(`/backend-api/conversations/${A}?primary=1`);const value=await r[method]();return method==='json'?value.mapping.a.message.id:JSON.parse(value).mapping.a.message.id;},{A,method});eq(result,'a','the app receives its unchanged payload');
+ await waitLabel(page,'a','GPT-6 Luna');ok((await snapshot(page)).labels[0].text.includes('Luna'));
+});
+test('metadata saved native fetch before script still has observed JSON consumption',{
+ html:modern('a'),beforeScript:'window.savedNativeFetch=window.fetch;',response:({url})=>url.searchParams.has('primary')?payload([msg('a','gpt-6-sol')],A):payload([]),
+},async({page})=>{
+ await page.evaluate(A=>window.savedNativeFetch(`/backend-api/conversations/${A}?primary=1`).then(r=>r.json()),A);await waitLabel(page,'a','GPT-6 Sol');
+});
+test('metadata legacy 404 fallback is not retried forever',{
+ html:modern('a'),response:()=>({httpStatus:404}),
+},async({page,requests})=>{
+ await page.waitForTimeout(700);const initial=requests.filter(r=>r.url.includes('/backend-api/')).length;
+ await page.evaluate(()=>{window.mutationTimer=setInterval(()=>document.querySelector('p').textContent='stream '+Date.now(),60)});await page.waitForTimeout(3550);await page.evaluate(()=>clearInterval(window.mutationTimer));
+ eq(requests.filter(r=>r.url.includes('/backend-api/')).length,initial,'unsupported singular fallback stops after one bounded pass');
+});
+
+
+test('metadata primary successful text remains byte-for-byte unchanged', {
+ html:modern('a'),beforeScript:abortCloneHook,response:({url})=>url.searchParams.has('primary')?payload([{...msg('a','gpt-6-sol'),content:{content_type:'text',parts:['KEEP quoted "text" and Unicode 汉字\nline']}}],A):payload([]),
+},async({page})=>{
+ const body=await page.evaluate(A=>fetch(`/backend-api/conversations/${A}?primary=1`).then(r=>r.text()),A);
+ const parsed=JSON.parse(body);eq(parsed.mapping.a.message.content.parts[0],'KEEP quoted "text" and Unicode 汉字\nline');await waitLabel(page,'a','GPT-6 Sol');
+ const d=await page.evaluate(()=>JSON.parse(document.getElementById('chatgpt-route-indicator-host').dataset.routeAcquisition));ok(d.primaryReads>0);eq(d.lastSource,'page response.text()');ok(!JSON.stringify(d).includes('KEEP quoted'));
+});
+test('metadata wrong conversation primary response cannot pollute current route', {
+ html:modern('a'),beforeScript:abortCloneHook,response:({url})=>payload([msg('a',url.pathname.endsWith(B)?'gpt-6-sol':'gpt-6-pro')]),
+},async({page})=>{
+ await waitLabel(page,'a','GPT-6 Pro / Astra');await page.evaluate(B=>savedNativeFetch(`/backend-api/conversations/${B}`).then(r=>r.text()),B);await page.waitForTimeout(150);ok((await snapshot(page)).labels[0].text.includes('Astra'));
+});
+test('metadata primary rejected body preserves app rejection', {
+ html:modern('a'),beforeScript:'window.savedNativeJson=Response.prototype.json;',response:()=>payload([]),
+},async({page})=>{
+ const results=await page.evaluate(async A=>{const read=async native=>{const r=new Response(new ReadableStream({start(c){setTimeout(()=>c.error(new DOMException('original abort','AbortError')),20);}}),{headers:{'content-type':'application/json'}});Object.defineProperty(r,'url',{value:location.origin+'/backend-api/conversations/'+A});return (native?savedNativeJson.call(r):r.json()).then(()=>null,e=>({name:e.name,message:e.message}));};return Promise.all([read(true),read(false)]);},A);
+ eq(JSON.stringify(results[1]),JSON.stringify(results[0]),'observed method propagates exactly the native rejection');ok(['AbortError','TypeError'].includes(results[0].name),'native browser stream rejection preserved');await waitLabel(page,'a','unknown');
+});
+test('metadata auth denial stops fallback without reading credentials',{
+ html:modern('a'),response:()=>({httpStatus:401}),
+},async({page,requests})=>{
+ await page.waitForTimeout(700);await page.evaluate(()=>{window.mutationTimer=setInterval(()=>document.querySelector('p').textContent='x'+Date.now(),60)});await page.waitForTimeout(3250);await page.evaluate(()=>clearInterval(window.mutationTimer));eq(requests.filter(r=>r.url.includes('/backend-api/')).length,1);
+ const a=await page.evaluate(()=>JSON.parse(document.getElementById('chatgpt-route-indicator-host').dataset.routeAcquisition));ok(a.fallback.includes('401'));eq(await page.evaluate(()=>localStorage.length+sessionStorage.length),0);
+});
+test('metadata idle known models do not trigger fallback on unrelated DOM changes',{
+ html:modern('a'),response:()=>payload([msg('a','gpt-6-pro')]),
+},async({page,requests})=>{
+ await waitLabel(page,'a','Astra');const before=requests.length;await page.evaluate(()=>{window.mutationTimer=setInterval(()=>document.querySelector('p').textContent='x'+Date.now(),60)});await page.waitForTimeout(3300);await page.evaluate(()=>clearInterval(window.mutationTimer));eq(requests.length,before);
+});
+
+
+test('metadata navigation loader response started before destination URL is kept',{
+ html:modern('a'),response:({url})=>url.pathname.endsWith(B)?payload([msg('a','gpt-6-luna')],B):payload([]),
+},async({page})=>{
+ await page.evaluate(async B=>{const r=await fetch(`/backend-api/conversations/${B}`);history.pushState({},'',`/c/${B}`);await r.text();},B);await waitLabel(page,'a','GPT-6 Luna');
+});
+
 const browser=await engine.launch({headless:true});
 try {
  for(const {name,spec,run} of cases){
@@ -274,12 +333,13 @@ try {
   await page.route('**/*',async route=>{
    const url=new URL(route.request().url());
    if(url.pathname.startsWith('/backend-api/')){
-    const data=spec.response?await spec.response({url,state}):payload(spec.messages||[]);
-    await route.fulfill({contentType:data.sse?'text/event-stream':'application/json',body:data.sse||JSON.stringify(data)}).catch(()=>{});return;
+    const data=spec.response?await spec.response({url,state,request:route.request()}):payload(spec.messages||[]);
+    await route.fulfill({status:data.httpStatus||200,contentType:data.sse?'text/event-stream':'application/json',body:data.sse||JSON.stringify(data)}).catch(()=>{});return;
    }
    await route.fulfill({contentType:'text/html',body:`<!doctype html><html><head><title>Synthetic route test</title></head><body>${spec.html}</body></html>`});
   });
   try {
+   if(spec.beforeScript)await page.addInitScript({content:spec.beforeScript});
    await page.addInitScript({content:source});await page.goto(`https://chatgpt.com${spec.startPath || `/c/${A}`}`);
    await run({page,context,requests,state});eq(errors.length,0,'no page errors');eq(requests.filter(r=>new URL(r.url).origin!=='https://chatgpt.com').length,0,'no cross-origin traffic');result.ok=true;
   } catch(e){result.error=e.message;result.snapshot=await snapshot(page).catch(()=>null);result.pageErrors=errors}
