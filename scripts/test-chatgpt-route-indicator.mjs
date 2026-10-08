@@ -294,6 +294,23 @@ const metadataFreeFailure = collectRoutes({
 assert.equal(metadataFreeFailure.length, 1);
 assert.equal(metadataFreeFailure[0].status, "failed");
 
+// UI adapters may have an exchange ID but no legacy message-author marker.
+assert.equal(routes[0].authorRole, "assistant");
+const wrapperRoute = routeForIdentity({ turnId: "one" }, new Map(routes.map(r => [routeKey(r), r])));
+assert.equal(wrapperRoute.actual, "gpt-6-pro");
+assert.equal(wrapperRoute.source, "turn sibling metadata");
+assert.equal(wrapperRoute.messageId, null);
+const sharedMap = new Map(sameTurnNodes.map(r => [routeKey(r), r]));
+assert.equal(routeForIdentity({ turnId: "shared-turn" }, sharedMap).actual, null);
+assert.equal(routeForIdentity({ messageId: "final-node", turnId: "shared-turn" }, sharedMap).actual, "gpt-5-4-thinking");
+assert.equal(routeForIdentity({ turnId: "another-turn" }, sharedMap).actual, null);
+const toolOnly = collectRoutes({id: "tool-only", author: {role: "tool"}, metadata: {
+  model_slug: "gpt-6-luna", turn_exchange_id: "tool-only-turn",
+}});
+assert.equal(toolOnly[0].authorRole, "tool");
+assert.equal(routeForIdentity({turnId: "tool-only-turn"}, new Map(toolOnly.map(r=>[routeKey(r),r]))).actual, null);
+assert.equal(mergeRoute(toolOnly[0], {messageId: "tool-only"}).authorRole, "tool");
+
 console.log(JSON.stringify({
   ok: true,
   routes: routes.length,
