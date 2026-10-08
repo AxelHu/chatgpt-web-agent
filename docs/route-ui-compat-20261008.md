@@ -1,5 +1,10 @@
 # Actual Model Route 0.7.0 — UI compatibility adaptation
 
+> Follow-up: the company-side real old-conversation test **failed on v0.7.0**.
+> Its actual DOM uses different identity attributes. See
+> [the v0.7.1 field follow-up](route-ui-field-20261008.md). The synthetic results
+> below remain historical evidence, not onsite acceptance.
+
 ## Observed report and confirmed reproduction
 
 On 2026-10-08 the user reported a floating model badge still appearing while

@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import {readFileSync, writeFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
-import {chromium} from 'playwright';
+import {chromium, firefox} from 'playwright';
+const engineName = process.env.ROUTE_TEST_BROWSER || 'chromium';
+assert.ok(['chromium','firefox'].includes(engineName), 'unsupported test browser');
+const engine = engineName === 'firefox' ? firefox : chromium;
 
 // All HTML, IDs and responses are synthetic. Every network request is fulfilled
 // locally; this suite does not use an account or establish live-site acceptance.
@@ -13,7 +16,7 @@ const msg=(id,model,extra={},role='assistant')=>({id,author:{role},create_time:i
 const payload=(messages,id)=>({...(id?{conversation_id:id}:{}),mapping:Object.fromEntries(messages.map(m=>[m.id,{message:m}]))});
 const legacy=(id,attrs='')=>`<article data-turn-id="turn-${id}"><div data-message-author-role="assistant" data-message-id="${id}" ${attrs}><p>Synthetic reply ${id}</p></div></article>`;
 const modern=(id,attrs='')=>`<article data-turn="assistant" data-turn-id="turn-${id}"><div data-message-id="${id}" ${attrs}><p>Synthetic reply ${id}</p></div></article>`;
-const report={version:source.match(/@version\s+(.+)/)?.[1].trim(),sha256:createHash('sha256').update(source).digest('hex'),at:new Date().toISOString(),mode:'synthetic Chromium DOM/network regression, not a live ChatGPT acceptance test',checks:0,cases:[]};
+const report={version:source.match(/@version\s+(.+)/)?.[1].trim(),sha256:createHash('sha256').update(source).digest('hex'),at:new Date().toISOString(),browser:engineName,mode:'synthetic DOM/network regression, not a live ChatGPT acceptance test',checks:0,cases:[]};
 const eq=(actual,expected,note)=>{assert.equal(actual,expected,note);report.checks++};
 const ok=(value,note)=>{assert.ok(value,note);report.checks++};
 const cases=[];
@@ -133,7 +136,94 @@ test('new conversation stream cannot adopt unrelated navigation', {html:modern('
  await page.evaluate(id=>history.pushState({},'',`/c/${id}`),B);await waitLabel(page,'a','GPT-6 Luna');state.release();await page.evaluate(()=>window.creation);await page.waitForTimeout(150);ok((await snapshot(page)).labels[0].text.includes('GPT-6 Luna'),'creation proof must match the actual destination ID');
 });
 
-const browser=await chromium.launch({headless:true});
+
+// Attribute names/counts reported by the company-side live test. Structure,
+// attribute serialization and all IDs/content below are synthetic, not a DOM dump.
+const fieldTurn=(key,ids,attrs='')=>`<section data-turn-key="${key}" data-conversation-role="assistant" data-chatgpt-agent-turn-start="true" ${attrs}><div data-chatgpt-search-message-ids='${JSON.stringify(ids)}'><p>Synthetic grouped reply</p></div>${'<button aria-label="Copy">Copy</button>'.repeat(5)}</section>`;
+async function waitField(page,key,text){await page.waitForFunction(({key,text})=>[...document.querySelectorAll('[data-chatgpt-actual-route="true"]')].some(n=>n.closest('[data-turn-key]')?.getAttribute('data-turn-key')===key&&n.textContent.includes(text)),{key,text},{timeout:4500})}
+const fieldRecords=Array.from({length:5},(_,i)=>[
+ msg('user-'+i,undefined,{},'user'),msg('tool-'+i,'gpt-6-sol',{},'tool'),
+ msg('reply-'+i,i%2?'gpt-6-luna':'gpt-6-pro'),
+]).flat();
+test('field DOM five assistant turns and 25 copy buttons', {
+ html:Array.from({length:5},(_,i)=>`<section data-turn-key="user-key-${i}"><div data-user-message-bubble="true">User text</div></section>`+fieldTurn('key-'+i,['tool-'+i,'reply-'+i,'user-'+i])).join(''),messages:fieldRecords,
+},async({page})=>{
+ await waitField(page,'key-4','GPT-6 Pro / Astra');eq(await page.locator('button[aria-label="Copy"]').count(),25,'copy buttons are not message identities');eq((await snapshot(page)).labels.length,5,'exactly one model badge per grouped assistant turn');
+ for(let i=0;i<5;i++){const n=page.locator(`[data-turn-key="key-${i}"]`).locator(badge);ok((await n.textContent()).includes(i%2?'GPT-6 Luna':'GPT-6 Pro / Astra'));eq(JSON.parse(await n.getAttribute('data-route-message-ids')).join(','),'reply-'+i,'only persisted assistant IDs match');}
+ eq(await page.locator('[data-user-message-bubble="true"] '+badge).count(),0);
+});
+test('field DOM multiple assistant models do not guess last ID', {html:fieldTurn('key',['b','u','a','t']),messages:[msg('a','gpt-6-pro'),msg('b','gpt-6-luna'),msg('u','gpt-6-sol',{},'user'),msg('t','gpt-6-sol',{},'tool')]},async({page})=>{
+ await waitField(page,'key','actual models:');const n=page.locator(badge);let text=await n.textContent();ok(text.includes('GPT-6 Pro / Astra')&&text.includes('GPT-6 Luna'));ok(!text.includes('GPT-6 Sol'));eq(JSON.parse(await n.getAttribute('data-route-message-ids')).sort().join(','),'a,b');
+ await page.evaluate(()=>document.querySelector('[data-chatgpt-search-message-ids]').setAttribute('data-chatgpt-search-message-ids','["t","a","u","b"]'));await page.waitForTimeout(120);eq(await n.textContent(),text,'list order is not precedence');
+});
+test('field DOM missing assistant model is retained as incomplete', {html:fieldTurn('key',['a','empty']),messages:[msg('a','gpt-6-pro'),msg('empty',undefined)]},async({page})=>{
+ await waitField(page,'key','unknown');await page.waitForTimeout(550);const n=page.locator(badge);eq(JSON.parse(await n.getAttribute('data-route-message-ids')).sort().join(','),'a,empty');ok((await n.textContent()).includes('1/2'),'assistant with absent metadata is not silently discarded');
+});
+test('field DOM attribute-only list and user-bubble changes', {html:fieldTurn('key',['a']),messages:common},async({page})=>{
+ await waitField(page,'key','GPT-6 Pro / Astra');await page.evaluate(()=>document.querySelector('[data-chatgpt-search-message-ids]').setAttribute('data-chatgpt-search-message-ids','b'));await waitField(page,'key','GPT-6 Luna');
+ await page.evaluate(()=>document.querySelector('[data-conversation-role]').setAttribute('data-user-message-bubble','true'));await page.waitForFunction(()=>!document.querySelector('[data-chatgpt-actual-route]'));eq((await snapshot(page)).labels.length,0);
+});
+test('field DOM nested markers deduplicate within keyed turn', {html:'<section data-turn-key="key" data-chatgpt-search-message-ids="a"><div data-conversation-role="assistant"><div data-chatgpt-agent-turn-start="true"></div><p>Reply</p><div data-chatgpt-search-message-ids="a"><span>Search anchor</span></div></div></section>',messages:common},async({page})=>{
+ await waitField(page,'key','GPT-6 Pro / Astra');eq((await snapshot(page)).labels.length,1,'empty turn-start marker is not another reply');
+});
+test('field DOM adjacent keyed turns never share ID lists', {html:'<main data-conversation-role="assistant">'+fieldTurn('one',['a'])+fieldTurn('two',['b'])+'</main>',messages:common},async({page})=>{
+ await waitField(page,'one','GPT-6 Pro / Astra');await waitField(page,'two','GPT-6 Luna');eq((await snapshot(page)).labels.length,2,'no enclosing conversation-wide badge');
+});
+test('field DOM turn key is opaque not exchange identity', {html:fieldTurn('turn-b',['not-loaded']),messages:common},async({page})=>{
+ await waitField(page,'turn-b','unknown');await page.waitForTimeout(550);ok(!(await page.locator(badge).textContent()).includes('GPT-6 Luna'),'DOM key cannot override authoritative unmatched message IDs');
+});
+test('field DOM scoped final exact message beats group IDs', {html:'<section data-turn-key="key" data-conversation-role="assistant" data-chatgpt-search-message-ids="a b"><div data-message-id="b" data-message-author-role="assistant">Final reply</div></section>',messages:common},async({page})=>{
+ await waitLabel(page,'b','GPT-6 Luna');eq((await snapshot(page)).labels.length,1);ok(!(await page.locator(badge).textContent()).includes('GPT-6 Pro / Astra'));
+});
+
+
+for(const [format,value] of [['space','u b a t'],['comma','u,b,a,t'],['JSON-string','"u,b,a,t"']])test('field DOM ID serialization '+format, {html:`<section data-turn-key="key" data-conversation-role="assistant" data-chatgpt-search-message-ids='${value}'>Reply</section>`,messages:[...common,msg('u',undefined,{},'user'),msg('t',undefined,{},'tool')]},async({page})=>{
+ await waitField(page,'key','actual models:');eq(JSON.parse(await page.locator(badge).getAttribute('data-route-message-ids')).join(','),'a,b');
+});
+test('field DOM same-model assistants compress without choosing an ID', {html:fieldTurn('key',['b','a','a']),messages:[msg('a','gpt-6-pro'),msg('b','gpt-6-astra')]},async({page})=>{
+ await waitField(page,'key','2 assistant messages');eq((await snapshot(page)).labels.length,1);eq((await snapshot(page)).focused,'','a group has no single focused message');ok((await page.locator(badge).textContent()).includes('GPT-6 Pro / Astra'));
+});
+test('field DOM nested identical role markers inherit correct IDs', {html:'<section data-turn-key="key" data-chatgpt-search-message-ids="a"><div data-conversation-role="assistant"><div data-conversation-role="assistant"><p>Reply</p></div></div></section>',messages:common},async({page})=>{
+ await waitField(page,'key','GPT-6 Pro / Astra');eq((await snapshot(page)).labels.length,1);
+});
+test('field DOM missing author proof cannot infer assistant from model slug', {html:fieldTurn('key',['unverified']),messages:[{id:'unverified',metadata:{model_slug:'gpt-6-sol'}}]},async({page})=>{
+ await waitField(page,'key','unknown');await page.waitForTimeout(550);eq(await page.locator(badge).getAttribute('data-route-unmatched-count'),'1');ok(!(await page.locator(badge).textContent()).includes('GPT-6 Sol'));
+});
+test('field DOM malformed ID list never falls back to key or model', {html:`<section data-turn-key="a" data-conversation-role="assistant" data-chatgpt-search-message-ids='["b",3]'>Reply</section>`,messages:common},async({page})=>{
+ await waitField(page,'a','unknown');await page.waitForTimeout(550);eq(await page.locator(badge).getAttribute('data-route-invalid-lists'),'1');ok(!(await page.locator(badge).textContent()).includes('GPT-6'));
+});
+test('field DOM key-only and marker-only exact ID proof', {html:'<section data-turn-key="a">Key reply</section><section data-chatgpt-agent-turn-start="b">Marker reply</section><div data-chatgpt-agent-turn-start="true"></div>',messages:common},async({page})=>{
+ await waitField(page,'a','GPT-6 Pro / Astra');await waitLabel(page,null,'GPT-6 Luna');eq((await snapshot(page)).labels.length,2,'boolean start sentinel is not a message');
+});
+test('field DOM marker and conversation role attribute changes', {html:'<section data-chatgpt-agent-turn-start="a">Reply</section>',messages:common},async({page})=>{
+ await waitLabel(page,null,'GPT-6 Pro / Astra');await page.evaluate(()=>document.querySelector('[data-chatgpt-agent-turn-start]').setAttribute('data-chatgpt-agent-turn-start','b'));await waitLabel(page,null,'GPT-6 Luna');
+ await page.evaluate(()=>document.querySelector('[data-chatgpt-agent-turn-start]').setAttribute('data-conversation-role','user'));await page.waitForFunction(()=>!document.querySelector('[data-chatgpt-actual-route]'));eq((await snapshot(page)).labels.length,0);
+});
+test('field DOM group scroll focus follows keyed reply', {html:fieldTurn('one',['a'],'style="height:850px"')+fieldTurn('two',['b'],'style="height:850px"'),messages:common},async({page})=>{
+ await waitField(page,'one','GPT-6 Pro / Astra');await waitPill(page,'GPT-6 Pro / Astra');await page.locator('[data-turn-key="two"]').scrollIntoViewIfNeeded();await waitPill(page,'GPT-6 Luna');
+ eq(await page.evaluate(()=>document.getElementById('chatgpt-route-indicator-host').shadowRoot.getElementById('pill').dataset.focusedTurnKey),'two');
+});
+test('field DOM replacement does not grow badge count', {html:fieldTurn('key',['a']),messages:common},async({page})=>{
+ await waitField(page,'key','GPT-6 Pro / Astra');await page.evaluate(html=>{document.querySelector('[data-turn-key="key"]').outerHTML=html},fieldTurn('key',['b']));await waitField(page,'key','GPT-6 Luna');eq((await snapshot(page)).labels.length,1);
+});
+test('field DOM exact listed no-model node cannot borrow unlisted sibling', {html:fieldTurn('key',['empty']),messages:[msg('empty',undefined,{turn_exchange_id:'same'}),msg('a','gpt-6-pro',{turn_exchange_id:'same'})]},async({page})=>{
+ await waitField(page,'key','unknown');await page.waitForTimeout(550);ok(!(await page.locator(badge).textContent()).includes('GPT-6 Pro'),'metadata filtering is exact even within an exchange');
+});
+
+test('field DOM descendant start ID does not promote opaque key', {html:'<section data-turn-key="opaque" data-conversation-role="assistant"><span data-chatgpt-agent-turn-start="a"></span><p>Reply</p></section>',messages:common},async({page})=>{
+ await waitField(page,'opaque','GPT-6 Pro / Astra');eq((await snapshot(page)).labels.length,1);eq(await page.locator(badge).getAttribute('data-route-unmatched-count'),'0');
+ await page.evaluate(()=>document.querySelector('[data-chatgpt-agent-turn-start]').setAttribute('data-chatgpt-agent-turn-start','b'));await waitField(page,'opaque','GPT-6 Luna');
+});
+
+test('field DOM read-only acceptance diagnostic', {html:fieldTurn('key',['a']),messages:common},async({page,requests})=>{
+ await waitField(page,'key','GPT-6 Pro / Astra');const before=requests.length;
+ const probe=readFileSync(new URL('./inspect-chatgpt-route-indicator-dom.js',import.meta.url),'utf8');
+ const diagnostic=await page.evaluate(probe);eq(diagnostic.scriptVersion,'0.7.1');eq(diagnostic.counts.inlineBadges,1);
+ eq(diagnostic.badges[0].matchedAssistantIds,1);eq(diagnostic.badges[0].unmatchedIds,0);eq(diagnostic.badges[0].hasLayoutBox,true);
+ eq(requests.length,before,'diagnostic performs no requests');ok(!JSON.stringify(diagnostic).includes('Synthetic grouped reply'),'diagnostic contains no original reply text');
+});
+
+const browser=await engine.launch({headless:true});
 try {
  for(const {name,spec,run} of cases){
   if(process.env.ROUTE_TEST_CASE&&!name.includes(process.env.ROUTE_TEST_CASE))continue;
