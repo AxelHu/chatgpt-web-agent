@@ -1,0 +1,481 @@
+{
+  "chromium": {
+    "version": "0.7.1",
+    "sha256": "c74f212c51c76060337212bab0d46e03a4930f45410013cf738f135654cab7df",
+    "at": "2026-10-08T06:11:00.009Z",
+    "browser": "chromium",
+    "mode": "synthetic DOM/network regression, not a live ChatGPT acceptance test",
+    "checks": 198,
+    "cases": [
+      {
+        "name": "legacy model labels and viewport",
+        "ok": true
+      },
+      {
+        "name": "article markers without legacy author marker",
+        "ok": true
+      },
+      {
+        "name": "metadata-only message IDs exclude users and tools",
+        "ok": true
+      },
+      {
+        "name": "hybrid wrappers are deduplicated",
+        "ok": true
+      },
+      {
+        "name": "different phases in one turn keep exact models",
+        "ok": true
+      },
+      {
+        "name": "message identity and concrete DOM model on ancestor",
+        "ok": true
+      },
+      {
+        "name": "turn-only wrapper uses unambiguous exchange evidence",
+        "ok": true
+      },
+      {
+        "name": "ambiguous turn-only wrapper stays unknown",
+        "ok": true
+      },
+      {
+        "name": "unmatched layout must not show global latest model",
+        "ok": true
+      },
+      {
+        "name": "React replacement restores one label",
+        "ok": true
+      },
+      {
+        "name": "site badge removal restores label without duplication",
+        "ok": true
+      },
+      {
+        "name": "attribute-only message ID reuse and role change",
+        "ok": true
+      },
+      {
+        "name": "attribute-only turn ID reuse",
+        "ok": true
+      },
+      {
+        "name": "continuous streaming cannot starve rendering",
+        "ok": true
+      },
+      {
+        "name": "nested scroll viewport excludes clipped replies",
+        "ok": true
+      },
+      {
+        "name": "display contents message retains visible focus",
+        "ok": true
+      },
+      {
+        "name": "hidden message is not used as floating fallback",
+        "ok": true
+      },
+      {
+        "name": "same-count SPA navigation updates bindings",
+        "ok": true
+      },
+      {
+        "name": "late JSON response from old chat is discarded",
+        "ok": true
+      },
+      {
+        "name": "late SSE response from old chat is discarded",
+        "ok": true
+      },
+      {
+        "name": "background GET for another conversation is ignored",
+        "ok": true
+      },
+      {
+        "name": "SSE is observed without consuming original response",
+        "ok": true
+      },
+      {
+        "name": "resolved-only and cancelled responses remain honest",
+        "ok": true
+      },
+      {
+        "name": "user prose and code lookalikes do not get labels",
+        "ok": true
+      },
+      {
+        "name": "idle rendering does not trigger repeated fallback traffic",
+        "ok": true
+      },
+      {
+        "name": "turn node with exact assistant message ID",
+        "ok": true
+      },
+      {
+        "name": "flex column badge must not grow to message height",
+        "ok": true
+      },
+      {
+        "name": "short clipped response cannot steal floating focus",
+        "ok": true
+      },
+      {
+        "name": "long conversation keeps one badge per assistant",
+        "ok": true
+      },
+      {
+        "name": "new conversation transition before stream headers",
+        "ok": true
+      },
+      {
+        "name": "new conversation preserves metadata already observed",
+        "ok": true
+      },
+      {
+        "name": "new conversation stream cannot adopt unrelated navigation",
+        "ok": true
+      },
+      {
+        "name": "field DOM five assistant turns and 25 copy buttons",
+        "ok": true
+      },
+      {
+        "name": "field DOM multiple assistant models do not guess last ID",
+        "ok": true
+      },
+      {
+        "name": "field DOM missing assistant model is retained as incomplete",
+        "ok": true
+      },
+      {
+        "name": "field DOM attribute-only list and user-bubble changes",
+        "ok": true
+      },
+      {
+        "name": "field DOM nested markers deduplicate within keyed turn",
+        "ok": true
+      },
+      {
+        "name": "field DOM adjacent keyed turns never share ID lists",
+        "ok": true
+      },
+      {
+        "name": "field DOM turn key is opaque not exchange identity",
+        "ok": true
+      },
+      {
+        "name": "field DOM scoped final exact message beats group IDs",
+        "ok": true
+      },
+      {
+        "name": "field DOM ID serialization space",
+        "ok": true
+      },
+      {
+        "name": "field DOM ID serialization comma",
+        "ok": true
+      },
+      {
+        "name": "field DOM ID serialization JSON-string",
+        "ok": true
+      },
+      {
+        "name": "field DOM same-model assistants compress without choosing an ID",
+        "ok": true
+      },
+      {
+        "name": "field DOM nested identical role markers inherit correct IDs",
+        "ok": true
+      },
+      {
+        "name": "field DOM missing author proof cannot infer assistant from model slug",
+        "ok": true
+      },
+      {
+        "name": "field DOM malformed ID list never falls back to key or model",
+        "ok": true
+      },
+      {
+        "name": "field DOM key-only and marker-only exact ID proof",
+        "ok": true
+      },
+      {
+        "name": "field DOM marker and conversation role attribute changes",
+        "ok": true
+      },
+      {
+        "name": "field DOM group scroll focus follows keyed reply",
+        "ok": true
+      },
+      {
+        "name": "field DOM replacement does not grow badge count",
+        "ok": true
+      },
+      {
+        "name": "field DOM exact listed no-model node cannot borrow unlisted sibling",
+        "ok": true
+      },
+      {
+        "name": "field DOM descendant start ID does not promote opaque key",
+        "ok": true
+      },
+      {
+        "name": "field DOM read-only acceptance diagnostic",
+        "ok": true
+      }
+    ],
+    "ok": true,
+    "scenarios": 54
+  },
+  "firefox": {
+    "version": "0.7.1",
+    "sha256": "c74f212c51c76060337212bab0d46e03a4930f45410013cf738f135654cab7df",
+    "at": "2026-10-08T06:10:22.955Z",
+    "browser": "firefox",
+    "mode": "synthetic DOM/network regression, not a live ChatGPT acceptance test",
+    "checks": 198,
+    "cases": [
+      {
+        "name": "legacy model labels and viewport",
+        "ok": true
+      },
+      {
+        "name": "article markers without legacy author marker",
+        "ok": true
+      },
+      {
+        "name": "metadata-only message IDs exclude users and tools",
+        "ok": true
+      },
+      {
+        "name": "hybrid wrappers are deduplicated",
+        "ok": true
+      },
+      {
+        "name": "different phases in one turn keep exact models",
+        "ok": true
+      },
+      {
+        "name": "message identity and concrete DOM model on ancestor",
+        "ok": true
+      },
+      {
+        "name": "turn-only wrapper uses unambiguous exchange evidence",
+        "ok": true
+      },
+      {
+        "name": "ambiguous turn-only wrapper stays unknown",
+        "ok": true
+      },
+      {
+        "name": "unmatched layout must not show global latest model",
+        "ok": true
+      },
+      {
+        "name": "React replacement restores one label",
+        "ok": true
+      },
+      {
+        "name": "site badge removal restores label without duplication",
+        "ok": true
+      },
+      {
+        "name": "attribute-only message ID reuse and role change",
+        "ok": true
+      },
+      {
+        "name": "attribute-only turn ID reuse",
+        "ok": true
+      },
+      {
+        "name": "continuous streaming cannot starve rendering",
+        "ok": true
+      },
+      {
+        "name": "nested scroll viewport excludes clipped replies",
+        "ok": true
+      },
+      {
+        "name": "display contents message retains visible focus",
+        "ok": true
+      },
+      {
+        "name": "hidden message is not used as floating fallback",
+        "ok": true
+      },
+      {
+        "name": "same-count SPA navigation updates bindings",
+        "ok": true
+      },
+      {
+        "name": "late JSON response from old chat is discarded",
+        "ok": true
+      },
+      {
+        "name": "late SSE response from old chat is discarded",
+        "ok": true
+      },
+      {
+        "name": "background GET for another conversation is ignored",
+        "ok": true
+      },
+      {
+        "name": "SSE is observed without consuming original response",
+        "ok": true
+      },
+      {
+        "name": "resolved-only and cancelled responses remain honest",
+        "ok": true
+      },
+      {
+        "name": "user prose and code lookalikes do not get labels",
+        "ok": true
+      },
+      {
+        "name": "idle rendering does not trigger repeated fallback traffic",
+        "ok": true
+      },
+      {
+        "name": "turn node with exact assistant message ID",
+        "ok": true
+      },
+      {
+        "name": "flex column badge must not grow to message height",
+        "ok": true
+      },
+      {
+        "name": "short clipped response cannot steal floating focus",
+        "ok": true
+      },
+      {
+        "name": "long conversation keeps one badge per assistant",
+        "ok": true
+      },
+      {
+        "name": "new conversation transition before stream headers",
+        "ok": true
+      },
+      {
+        "name": "new conversation preserves metadata already observed",
+        "ok": true
+      },
+      {
+        "name": "new conversation stream cannot adopt unrelated navigation",
+        "ok": true
+      },
+      {
+        "name": "field DOM five assistant turns and 25 copy buttons",
+        "ok": true
+      },
+      {
+        "name": "field DOM multiple assistant models do not guess last ID",
+        "ok": true
+      },
+      {
+        "name": "field DOM missing assistant model is retained as incomplete",
+        "ok": true
+      },
+      {
+        "name": "field DOM attribute-only list and user-bubble changes",
+        "ok": true
+      },
+      {
+        "name": "field DOM nested markers deduplicate within keyed turn",
+        "ok": true
+      },
+      {
+        "name": "field DOM adjacent keyed turns never share ID lists",
+        "ok": true
+      },
+      {
+        "name": "field DOM turn key is opaque not exchange identity",
+        "ok": true
+      },
+      {
+        "name": "field DOM scoped final exact message beats group IDs",
+        "ok": true
+      },
+      {
+        "name": "field DOM ID serialization space",
+        "ok": true
+      },
+      {
+        "name": "field DOM ID serialization comma",
+        "ok": true
+      },
+      {
+        "name": "field DOM ID serialization JSON-string",
+        "ok": true
+      },
+      {
+        "name": "field DOM same-model assistants compress without choosing an ID",
+        "ok": true
+      },
+      {
+        "name": "field DOM nested identical role markers inherit correct IDs",
+        "ok": true
+      },
+      {
+        "name": "field DOM missing author proof cannot infer assistant from model slug",
+        "ok": true
+      },
+      {
+        "name": "field DOM malformed ID list never falls back to key or model",
+        "ok": true
+      },
+      {
+        "name": "field DOM key-only and marker-only exact ID proof",
+        "ok": true
+      },
+      {
+        "name": "field DOM marker and conversation role attribute changes",
+        "ok": true
+      },
+      {
+        "name": "field DOM group scroll focus follows keyed reply",
+        "ok": true
+      },
+      {
+        "name": "field DOM replacement does not grow badge count",
+        "ok": true
+      },
+      {
+        "name": "field DOM exact listed no-model node cannot borrow unlisted sibling",
+        "ok": true
+      },
+      {
+        "name": "field DOM descendant start ID does not promote opaque key",
+        "ok": true
+      },
+      {
+        "name": "field DOM read-only acceptance diagnostic",
+        "ok": true
+      }
+    ],
+    "ok": true,
+    "scenarios": 54
+  },
+  "baseline_0_7_0": {
+    "version": "0.7.0",
+    "sha256": "1a3c1d427ebd58e43fd5359bc7c42cbf23f45ea4753f290e23aa86b786df7de2",
+    "at": "2026-10-08T06:03:57.253Z",
+    "mode": "synthetic Chromium DOM/network regression, not a live ChatGPT acceptance test",
+    "checks": 0,
+    "cases": [
+      {
+        "name": "field DOM five assistant turns and 25 copy buttons",
+        "ok": false,
+        "error": "page.waitForFunction: Timeout 4500ms exceeded.",
+        "snapshot": {
+          "labels": [],
+          "pill": "Actual · no reply matched",
+          "focused": "",
+          "version": "0.7.0"
+        },
+        "pageErrors": []
+      }
+    ],
+    "ok": false,
+    "scenarios": 1
+  }
+}
