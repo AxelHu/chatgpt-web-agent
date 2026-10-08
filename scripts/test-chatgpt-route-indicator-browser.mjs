@@ -218,9 +218,51 @@ test('field DOM descendant start ID does not promote opaque key', {html:'<sectio
 test('field DOM read-only acceptance diagnostic', {html:fieldTurn('key',['a']),messages:common},async({page,requests})=>{
  await waitField(page,'key','GPT-6 Pro / Astra');const before=requests.length;
  const probe=readFileSync(new URL('./inspect-chatgpt-route-indicator-dom.js',import.meta.url),'utf8');
- const diagnostic=await page.evaluate(probe);eq(diagnostic.scriptVersion,'0.7.1');eq(diagnostic.counts.inlineBadges,1);
+ const diagnostic=await page.evaluate(probe);eq(diagnostic.scriptVersion,report.version);eq(diagnostic.counts.inlineBadges,1);
  eq(diagnostic.badges[0].matchedAssistantIds,1);eq(diagnostic.badges[0].unmatchedIds,0);eq(diagnostic.badges[0].hasLayoutBox,true);
  eq(requests.length,before,'diagnostic performs no requests');ok(!JSON.stringify(diagnostic).includes('Synthetic grouped reply'),'diagnostic contains no original reply text');
+});
+
+// Geometry/ownership reproduced from the home Chrome DOM, with synthetic IDs/text.
+const srCss='<style>.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}</style>';
+const srTurn=(key,ids,extra='')=>`<section data-turn-key="${key}" ${extra}><div data-chatgpt-agent-turn-start="true"></div><div data-chatgpt-search-message-ids="user-${key}"><h4 class="sr-only" data-conversation-role="user">You said</h4><div data-user-message-bubble="true">Synthetic user</div></div><div data-chatgpt-search-message-ids="${ids}" class="visual-reply"><h4 class="sr-only m-0 select-none" data-conversation-role="assistant">Assistant said</h4><div style="height:360px">Synthetic visible reply</div></div><button>Copy</button></section>`;
+test('home DOM sr-only role must mount a readable visible label', {html:srCss+srTurn('first','a')+srTurn('second','b'),messages:common},async({page})=>{
+ await waitField(page,'first','GPT-6 Pro / Astra');await waitField(page,'second','GPT-6 Luna');
+ eq(await page.locator('.sr-only '+badge).count(),0,'semantic heading must stay unmodified');
+ eq(await page.locator('.visual-reply > '+badge).count(),2,'labels belong to real message content containers');
+ for(const key of ['first','second']){const n=page.locator(`[data-turn-key="${key}"]`).locator(badge);await n.scrollIntoViewIfNeeded();const g=await n.evaluate(n=>{const r=n.getBoundingClientRect();const hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return {w:r.width,h:r.height,hit:hit===n||n.contains(hit),below:n.previousElementSibling.getBoundingClientRect().bottom<=r.top}});ok(g.w>100&&g.h>10&&g.hit&&g.below,'label is painted, readable, below visible body and hit-testable');}
+ await waitPill(page,'GPT-6 Luna');eq((await snapshot(page)).labels.length,2);
+});
+test('home DOM hidden cached page does not count as active replies', {html:srCss+'<div data-app-shell-page-surface style="display:none">'+srTurn('old','missing-old')+'</div><div data-app-shell-page-surface>'+srTurn('active','a')+'</div>',messages:common},async({page})=>{
+ await waitField(page,'active','GPT-6 Pro / Astra');eq((await snapshot(page)).labels.length,1,'cached hidden conversation gets no active label');eq(await page.locator('[data-turn-key="old"] '+badge).count(),0);
+ await page.evaluate(()=>{const [old,current]=document.querySelectorAll('[data-app-shell-page-surface]');old.querySelector('.visual-reply').setAttribute('data-chatgpt-search-message-ids','b');old.style.display='block';current.style.display='none';});
+ await waitField(page,'old','GPT-6 Luna');eq((await snapshot(page)).labels.length,1,'cache activation removes old current labels');
+});
+test('home DOM grouped assistant IDs stay exact on promoted host', {html:srCss+srTurn('multi','a b user-multi tool'),messages:[...common,msg('user-multi',undefined,{},'user'),msg('tool','gpt-6-sol',{},'tool')]},async({page})=>{
+ await waitField(page,'multi','actual models:');const n=page.locator('.visual-reply > '+badge);eq(await n.count(),1);eq(JSON.parse(await n.getAttribute('data-route-message-ids')).join(','),'a,b');ok(!(await n.textContent()).includes('GPT-6 Sol'));
+});
+test('home DOM diagnostic distinguishes clip from actual visible text', {html:srCss+srTurn('key','a'),messages:common},async({page})=>{
+ await waitField(page,'key','GPT-6 Pro / Astra');const probe=readFileSync(new URL('./inspect-chatgpt-route-indicator-dom.js',import.meta.url),'utf8');const result=await page.evaluate(probe);eq(result.counts.readableInlineBadges,1);eq(result.badges[0].insideScreenReaderOnly,false);eq(result.badges[0].hasReadableLayoutBox,true);
+});
+
+test('home SPA revisiting a cached page restores only its own metadata', {html:modern('same'),response:({url,state})=>url.pathname.endsWith(A)&&state.noAFetch?payload([]):payload([msg('same',url.pathname.endsWith(B)?'gpt-6-luna':'gpt-6-pro')])},async({page,state})=>{
+ await waitLabel(page,'same','GPT-6 Pro / Astra');state.noAFetch=true;
+ await page.evaluate(id=>history.pushState({},'',`/c/${id}`),B);await waitLabel(page,'same','GPT-6 Luna');
+ await page.evaluate(id=>history.pushState({},'',`/c/${id}`),A);await waitLabel(page,'same','GPT-6 Pro / Astra');eq((await snapshot(page)).labels.length,1);
+});
+test('home SPA background plural conversation GET cannot replace current metadata', {html:modern('a'),response:({url})=>payload([msg('a',url.pathname.endsWith(B)?'gpt-6-luna':'gpt-6-pro')])},async({page})=>{
+ await waitLabel(page,'a','GPT-6 Pro / Astra');await page.evaluate(id=>fetch(`/backend-api/conversations/${id}`).then(r=>r.json()),B);await page.waitForTimeout(120);ok((await snapshot(page)).labels[0].text.includes('GPT-6 Pro / Astra'));
+});
+
+const cacheIds=[A,B,'33333333-3333-3333-3333-333333333333','44444444-4444-4444-4444-444444444444','55555555-5555-5555-5555-555555555555'];
+const cacheModels=['gpt-6-pro','gpt-6-luna','gpt-6-sol','gpt-5-6-thinking','gpt-5-4-thinking'];
+const cacheLabels=['GPT-6 Pro / Astra','GPT-6 Luna','GPT-6 Sol','GPT-5.6 Thinking','GPT-5.4 Thinking'];
+for(const count of [4,5])test('home SPA bounded cache revisit after '+count+' conversations',{html:modern('same'),response:({url,state})=>state.noAFetch&&url.pathname.endsWith(A)?payload([]):payload([msg('same',cacheModels[cacheIds.findIndex(id=>url.pathname.endsWith(id))]||'gpt-6-pro')])},async({page,state})=>{
+ await waitLabel(page,'same',cacheLabels[0]);state.noAFetch=true;
+ for(let i=1;i<count;i++){await page.evaluate(id=>history.pushState({},'',`/c/${id}`),cacheIds[i]);await waitLabel(page,'same',cacheLabels[i]);}
+ await page.evaluate(id=>history.pushState({},'',`/c/${id}`),A);
+ if(count===4){await waitLabel(page,'same',cacheLabels[0]);ok((await snapshot(page)).labels[0].text.includes(cacheLabels[0]),'restore target before eviction on departure');}
+ else{await waitLabel(page,'same','unknown');ok(!(await snapshot(page)).labels[0].text.includes('GPT-'),'evicted chat must not borrow another model');}
 });
 
 const browser=await engine.launch({headless:true});

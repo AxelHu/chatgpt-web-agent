@@ -14,6 +14,21 @@
     catch { if (/^[\["{]/.test(value.trim())) format = 'malformed JSON'; }
     return format;
   });
+  const layout = (node) => {
+    let hidden = false, insideScreenReaderOnly = false;
+    for (let parent = node; parent; parent = parent.parentElement) {
+      const css = getComputedStyle(parent);
+      if (css.display === "none" || css.visibility === "hidden" || css.opacity === "0"
+        || parent.hidden || parent.hasAttribute("inert") || parent.getAttribute("aria-hidden") === "true") hidden = true;
+      const r = parent.getBoundingClientRect();
+      if (parent.classList.contains("sr-only") || (r.width <= 2 && r.height <= 2
+        && css.position === "absolute" && (css.clipPath !== "none" || css.clip !== "auto"))) insideScreenReaderOnly = true;
+    }
+    const r = node.getBoundingClientRect();
+    return { insideScreenReaderOnly, hiddenByAncestor: hidden,
+      hasReadableLayoutBox: !hidden && !insideScreenReaderOnly && r.width >= 24 && r.height >= 8,
+      width: Math.round(r.width * 100) / 100, height: Math.round(r.height * 100) / 100 };
+  };
   return {
     scriptVersion: host?.dataset.scriptVersion || null,
     counts: {
@@ -23,13 +38,15 @@
       searchIdLists: listFormats.length,
       userBubbles: count('[data-user-message-bubble="true"]'),
       inlineBadges: badges.length,
+      readableInlineBadges: badges.filter((node) => layout(node).hasReadableLayoutBox).length,
+      activeAssistantRole: [...document.querySelectorAll('[data-conversation-role="assistant"]')].filter((node) => !layout(node).hiddenByAncestor).length,
       badgesInsideUserBubbles: count('[data-user-message-bubble="true"] [data-chatgpt-actual-route="true"]'),
     },
     listFormats: Object.fromEntries([...new Set(listFormats)].map((format) => [format, listFormats.filter((value) => value === format).length])),
     focused: { label: pill?.textContent || null, assistantIdCount: idsLength(pill?.dataset.focusedMessageIds) },
     badges: badges.map((node, index) => {
       const rect = node.getBoundingClientRect();
-      return { index, binding: node.dataset.routeBinding || null,
+      return { index, ...layout(node), binding: node.dataset.routeBinding || null,
         matchedAssistantIds: idsLength(node.dataset.routeMessageIds),
         unmatchedIds: Number(node.dataset.routeUnmatchedCount || 0), invalidLists: Number(node.dataset.routeInvalidLists || 0),
         label: node.textContent, hasLayoutBox: rect.width > 0 && rect.height > 0,

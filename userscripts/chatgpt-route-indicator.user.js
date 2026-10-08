@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT Actual Model Route
 // @namespace    https://chatgpt.com/
-// @version      0.7.1
+// @version      0.7.3
 // @description  Show the concrete model recorded on each ChatGPT assistant message without collecting conversation text.
 // @match        https://chatgpt.com/*
 // @run-at       document-start
@@ -12,7 +12,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.7.1";
+  const VERSION = "0.7.3";
   const testHook = globalThis.__CHATGPT_ROUTE_INDICATOR_TEST__;
   const GPT6_ALIASES = new Set(["gpt-6-pro", "gpt-6-astra", "gpt-6-astra-pro"]);
   const ROUTE_KEYS = ["default_model_slug", "requested_model_slug", "resolved_model_slug", "model_slug"];
@@ -430,6 +430,7 @@
 
   const state = {
     routes: new Map(),
+    recentConversations: new Map(),
     latest: null,
     path: location.pathname,
     provisionalConversationId: null,
@@ -455,15 +456,35 @@
     scheduleRender();
   }
 
+  function saveConversationMetadata(id) {
+    if (!id || !state.routes.size) return;
+    // The app caches inactive conversation pages. Keep only metadata for the
+    // three most recently departed conversations, never response text or auth.
+    // The active conversation remains uncapped; saved snapshots are bounded.
+    const records = [...state.routes.entries()].slice(-4000);
+    state.recentConversations.delete(id);
+    state.recentConversations.set(id, records);
+    while (state.recentConversations.size > 3) {
+      state.recentConversations.delete(state.recentConversations.keys().next().value);
+    }
+  }
+
   function syncNavigation() {
     if (state.path === location.pathname) return false;
     // Creating a chat changes / -> /c/ID while the same response is streaming.
     // Preserve only metadata explicitly bound by that creation response's ID.
+    const destination = conversationId();
+    const cached = destination && state.recentConversations.get(destination);
+    state.recentConversations.delete(destination);
+    saveConversationMetadata(conversationId(state.path));
     const creatingThisChat = !conversationId(state.path) && state.provisionalConversationId
       && state.provisionalConversationId === conversationId();
     state.path = location.pathname;
     state.epoch += 1;
-    if (!creatingThisChat) { state.routes.clear(); state.latest = null; }
+    if (!creatingThisChat) {
+      state.routes = new Map(cached || []);
+      state.latest = chooseLatest([...state.routes.values()]);
+    }
     state.provisionalConversationId = null;
     state.lastFallbackAt = 0;
     clearTimeout(state.fallbackTimer);
@@ -565,7 +586,7 @@
     const response = await nativeFetch(input, init);
     try {
       if (!url) return response;
-      const requestId = url.pathname.match(/\/conversation\/([0-9a-f-]{20,})(?:\/|$)/i)?.[1];
+      const requestId = url.pathname.match(/\/conversations?\/([0-9a-f-]{20,})(?:\/|$)/i)?.[1];
       if ((currentEpoch(epoch) || awaitingCreationId(epoch))
         && (!requestId || requestId === conversationId()) && shouldInspect(url, response)) {
         const clone = response.clone();
@@ -650,6 +671,7 @@
       "data-message-model-slug", "data-message-status", "data-status",
       "data-turn-key", "data-conversation-role", "data-chatgpt-agent-turn-start",
       "data-chatgpt-search-message-ids", "data-user-message-bubble",
+      "class", "style", "hidden", "aria-hidden", "inert",
     ],
   };
 
@@ -741,6 +763,39 @@
     };
   }
 
+  function inactivePage(node) {
+    for (let page = node.closest("[data-app-shell-page-surface]"); page;
+      page = page.parentElement?.closest("[data-app-shell-page-surface]")) {
+      const style = getComputedStyle(page);
+      if (page.hidden || page.hasAttribute("inert") || page.getAttribute("aria-hidden") === "true"
+        || style.display === "none" || style.visibility === "hidden") return true;
+    }
+    return false;
+  }
+
+  function screenReaderMarker(node) {
+    if (node.classList.contains("sr-only")) return true;
+    const style = getComputedStyle(node);
+    const rect = node.getBoundingClientRect();
+    return style.position === "absolute" && rect.width <= 2 && rect.height <= 2
+      && (style.clipPath !== "none" || style.clip !== "auto");
+  }
+
+  function inlineHost(node) {
+    if (!screenReaderMarker(node)) return node;
+    // The actual site places the role on H4.sr-only, not on the visual reply.
+    // Keep that node as identity evidence; place ONLY our label on its own
+    // message-search container. Do not remove accessibility styles or promote
+    // to a whole turn that also contains a user bubble or another assistant.
+    const owner = node.parentElement?.closest(SEARCH_IDS_SELECTOR + "," + MESSAGE_SELECTOR);
+    if (!owner || owner.closest("[data-turn-key]") !== node.closest("[data-turn-key]")
+      || owner.closest(EXCLUDED_SELECTOR) || owner.querySelector('[data-user-message-bubble="true"]')) return null;
+    const roles = [...owner.querySelectorAll('[data-conversation-role]')]
+      .filter((role) => role.closest(SEARCH_IDS_SELECTOR + "," + MESSAGE_SELECTOR) === owner);
+    if (roles.some((role) => role.dataset.conversationRole !== "assistant") || roles.length > 1) return null;
+    return owner;
+  }
+
   function assistantNodes() {
     const candidates = new Set();
     const eligible = (node) => {
@@ -783,7 +838,14 @@
           || assistantIdentity(parent).messageId === id)) redundant.add(parent);
       }
     }
-    return [...candidates].filter((node) => !redundant.has(node));
+    const hosts = new Set();
+    return [...candidates].filter((node) => {
+      if (redundant.has(node) || inactivePage(node)) return false;
+      const host = inlineHost(node);
+      if (!host || hosts.has(host)) return false;
+      hosts.add(host);
+      return true;
+    });
   }
 
   function routeForAssistant(node) {
@@ -799,19 +861,21 @@
     const clipping = new Map();
     const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
     for (const node of assistants) {
-      const style = getComputedStyle(node);
+      const anchor = inlineHost(node);
+      if (!anchor) continue;
+      const style = getComputedStyle(anchor);
       if (style.visibility === "hidden" || style.display === "none") continue;
-      let rect = node.getBoundingClientRect();
+      let rect = anchor.getBoundingClientRect();
       // display:contents has no own box, but its rendered reply still occupies
       // the viewport. Measure its contents rather than the badge alone.
       if (!rect.width && !rect.height && style.display === "contents") {
         const range = document.createRange();
-        range.selectNodeContents(node);
+        range.selectNodeContents(anchor);
         rect = range.getBoundingClientRect();
       }
       let top = Math.max(rect.top, 0), bottom = Math.min(rect.bottom, viewportHeight);
       let left = Math.max(rect.left, 0), right = Math.min(rect.right, viewportWidth);
-      for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+      for (let parent = anchor.parentElement; parent; parent = parent.parentElement) {
         if (!clipping.has(parent)) {
           const css = getComputedStyle(parent);
           clipping.set(parent, { rect: parent.getBoundingClientRect(),
@@ -862,7 +926,9 @@
     const retained = new Set();
     for (const target of assistants) {
       const route = routeForAssistant(target);
-      let badge = target.querySelector(":scope > [data-chatgpt-actual-route]");
+      const host = inlineHost(target);
+      if (!host) continue;
+      let badge = host.querySelector(":scope > [data-chatgpt-actual-route]");
       if (!route) {
         if (badge) badge.remove();
         continue;
@@ -871,7 +937,7 @@
         badge = document.createElement("div");
         badge.dataset.chatgptActualRoute = "true";
         badge.style.cssText = "display:block;flex:0 0 auto;align-self:stretch;grid-column:1/-1;width:100%;margin:6px 0 2px;font:11px/1.4 ui-sans-serif,system-ui;color:#64748b";
-        target.appendChild(badge);
+        host.appendChild(badge);
       }
       retained.add(badge);
       const identity = assistantIdentity(target);
@@ -1009,10 +1075,16 @@
     ensurePanel();
     scheduleRender();
     scheduleFallback(350);
-    const observer = new MutationObserver(() => {
+    const observer = new MutationObserver((records) => {
+      const layoutOnly = (record) => record.type === "attributes"
+        && ["class", "style", "hidden", "aria-hidden", "inert"].includes(record.attributeName);
+      const relevant = records.filter((record) => !layoutOnly(record)
+        || record.target.matches(ASSISTANT_SELECTOR + ",[data-app-shell-page-surface]")
+        || record.target.querySelector?.(ASSISTANT_SELECTOR));
+      if (!relevant.length) return;
       const navigated = syncNavigation();
       scheduleRender();
-      if (!navigated) scheduleFallback(1500);
+      if (!navigated && relevant.some((record) => !layoutOnly(record))) scheduleFallback(1500);
     });
     state.observer = observer;
     observer.observe(document.documentElement, OBSERVER_OPTIONS);

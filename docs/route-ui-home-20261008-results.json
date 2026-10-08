@@ -1,0 +1,186 @@
+{
+  "version": "0.7.3",
+  "source_sha256": "96c8897f16b92efd70009826f13843d3349554b52c48997eed9dbdd0fa148874",
+  "home_browser": "existing Windows Chrome, real signed-in account, normally installed Tampermonkey script",
+  "real_conversations": [
+    {
+      "completed_assistant_replies": 2,
+      "readable_labels": 2,
+      "models": [
+        "gpt-6-thinking",
+        "gpt-5-6-thinking"
+      ],
+      "fresh_navigation": true,
+      "cached_return_passed": true
+    },
+    {
+      "completed_assistant_replies": 3,
+      "readable_labels": 3,
+      "independent_assistant_role_and_model_checks": [
+        {
+          "index": 0,
+          "matchedIds": 1,
+          "exactAssistantProof": true,
+          "models": [
+            "gpt-6-pro"
+          ],
+          "labelConsistent": true,
+          "label": "actual model: GPT-6 Pro / Astra",
+          "unmatchedIds": 0
+        },
+        {
+          "index": 1,
+          "matchedIds": 1,
+          "exactAssistantProof": true,
+          "models": [
+            "gpt-6-pro"
+          ],
+          "labelConsistent": true,
+          "label": "actual model: GPT-6 Pro / Astra",
+          "unmatchedIds": 0
+        },
+        {
+          "index": 2,
+          "matchedIds": 1,
+          "exactAssistantProof": true,
+          "models": [
+            "gpt-6-pro"
+          ],
+          "labelConsistent": true,
+          "label": "actual model: GPT-6 Pro / Astra",
+          "unmatchedIds": 0
+        }
+      ]
+    }
+  ],
+  "cached_return": {
+    "scriptVersion": "0.7.3",
+    "counts": {
+      "assistantRole": 5,
+      "turnKeys": 6,
+      "turnStartMarkers": 6,
+      "searchIdLists": 11,
+      "userBubbles": 6,
+      "inlineBadges": 2,
+      "readableInlineBadges": 2,
+      "activeAssistantRole": 2,
+      "badgesInsideUserBubbles": 0
+    },
+    "listFormats": {
+      "delimited": 11
+    },
+    "focused": {
+      "label": "Actual · GPT-5.6 Thinking",
+      "assistantIdCount": 1
+    },
+    "badges": [
+      {
+        "index": 0,
+        "insideScreenReaderOnly": false,
+        "hiddenByAncestor": false,
+        "hasReadableLayoutBox": true,
+        "width": 768,
+        "height": 15.4,
+        "binding": "assistant-message-set",
+        "matchedAssistantIds": 1,
+        "unmatchedIds": 0,
+        "invalidLists": 0,
+        "label": "actual model: gpt-6-thinking",
+        "hasLayoutBox": true,
+        "insideKeyedTurn": true
+      },
+      {
+        "index": 1,
+        "insideScreenReaderOnly": false,
+        "hiddenByAncestor": false,
+        "hasReadableLayoutBox": true,
+        "width": 768,
+        "height": 15.4,
+        "binding": "assistant-message-set",
+        "matchedAssistantIds": 1,
+        "unmatchedIds": 0,
+        "invalidLists": 0,
+        "label": "actual model: GPT-5.6 Thinking",
+        "hasLayoutBox": true,
+        "insideKeyedTurn": true
+      }
+    ]
+  },
+  "after_full_reload": {
+    "independentObserverAbsent": true,
+    "timeOrigin": 1791444466893.6,
+    "version": "0.7.3",
+    "ok": true,
+    "rows": [
+      {
+        "index": 0,
+        "label": "actual model: gpt-6-thinking",
+        "pill": "Actual · gpt-6-thinking",
+        "idsEqual": true,
+        "readable": true,
+        "hit": true,
+        "srOnly": false,
+        "inViewport": true
+      },
+      {
+        "index": 1,
+        "label": "actual model: GPT-5.6 Thinking",
+        "pill": "Actual · GPT-5.6 Thinking",
+        "idsEqual": true,
+        "readable": true,
+        "hit": true,
+        "srOnly": false,
+        "inViewport": true
+      },
+      {
+        "index": 0,
+        "label": "actual model: gpt-6-thinking",
+        "pill": "Actual · gpt-6-thinking",
+        "idsEqual": true,
+        "readable": true,
+        "hit": true,
+        "srOnly": false,
+        "inViewport": true
+      }
+    ]
+  },
+  "regression": {
+    "chromium": {
+      "ok": true,
+      "scenarios": 62,
+      "checks": 232,
+      "sha256": "96c8897f16b92efd70009826f13843d3349554b52c48997eed9dbdd0fa148874"
+    },
+    "firefox": {
+      "ok": true,
+      "scenarios": 62,
+      "checks": 232,
+      "sha256": "96c8897f16b92efd70009826f13843d3349554b52c48997eed9dbdd0fa148874"
+    }
+  },
+  "installation_changes": [
+    "Google sign-in completed using existing account; no password or OTP required",
+    "Tampermonkey per-extension Allow User Scripts enabled",
+    "Tampermonkey master enabled",
+    "Existing Actual Model Route updated in place to 0.7.3"
+  ],
+  "proxy_restore": "Original ZeroOmega acgpower profile restored; toolbar confirmed its localhost:8123 PAC endpoint.",
+  "no_new_chat_prompt_submitted": true,
+  "original_browser_windows_closed": false,
+  "credentials_exported": false,
+  "cleanup": {
+    "owned_window_closed": true,
+    "original_chrome_window_preserved": true,
+    "original_chrome_process_preserved": true,
+    "browser_restarted": false,
+    "independent_page_observer_removed_by_full_reload": true
+  },
+  "screenshot": {
+    "inline": "home-0.7.3-inline.png",
+    "width": 235,
+    "height": 25,
+    "native_crop": true,
+    "visual_review_passed": true,
+    "contains_conversation_text": false
+  }
+}
