@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT Actual Model Route
 // @namespace    https://chatgpt.com/
-// @version      0.7.3
+// @version      0.7.4
 // @description  Show the concrete model recorded on each ChatGPT assistant message without collecting conversation text.
 // @match        https://chatgpt.com/*
 // @run-at       document-start
@@ -12,7 +12,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.7.3";
+  const VERSION = "0.7.4";
   const testHook = globalThis.__CHATGPT_ROUTE_INDICATOR_TEST__;
   const GPT6_ALIASES = new Set(["gpt-6-pro", "gpt-6-astra", "gpt-6-astra-pro"]);
   const ROUTE_KEYS = ["default_model_slug", "requested_model_slug", "resolved_model_slug", "model_slug"];
@@ -305,7 +305,7 @@
     const incomplete = route.knownCount < count || route.unmappedMessageIds.length || route.invalidIdLists;
     if (incomplete) return [
       "actual model: unknown", models ? `recorded: ${models}` : "",
-      `${route.knownCount}/${count} assistant models known`,
+      count ? `${route.knownCount}/${count} assistant models known` : "waiting for assistant metadata",
       route.unmappedMessageIds.length ? `${route.unmappedMessageIds.length} unmatched ID(s)` : "",
       route.invalidIdLists ? "invalid message-ID list" : "",
     ].filter(Boolean).join(" · ");
@@ -440,7 +440,15 @@
     lastFallbackAt: 0,
     fallbackTimer: null,
     renderTimer: null,
+    fallbackInFlight: null,
+    fallbackDisabled: false,
+    fallbackAttempts: 0,
+    acquisition: { primaryReads: 0, primaryErrors: 0, cloneReads: 0,
+      cloneAborts: 0, lastSource: "waiting for page metadata", lastUpdateAt: null,
+      fallback: "not attempted" },
   };
+  const responseScopes = new WeakMap();
+  const observerOwnedResponses = new WeakSet();
 
   function rememberRoutes(routes) {
     let changed = false;
@@ -486,6 +494,13 @@
       state.latest = chooseLatest([...state.routes.values()]);
     }
     state.provisionalConversationId = null;
+    state.fallbackInFlight?.abort();
+    state.fallbackInFlight = null;
+    state.fallbackDisabled = false;
+    state.fallbackAttempts = 0;
+    state.acquisition.lastSource = cached ? "conversation metadata cache" : "waiting for page metadata";
+    state.acquisition.lastUpdateAt = null;
+    state.acquisition.fallback = "not attempted";
     state.lastFallbackAt = 0;
     clearTimeout(state.fallbackTimer);
     state.fallbackTimer = null;
@@ -498,6 +513,14 @@
     syncNavigation();
     if (typeof source === "number") return source === state.epoch;
     if (source.epoch === state.epoch) return true;
+    // A navigation loader can request its exact destination before committing
+    // the URL. Accept that one transition, but never an old response from a
+    // previous visit to the same conversation or a different destination.
+    if (source.requestId && source.requestId === conversationId()
+      && source.originConversationId !== source.requestId && source.epoch + 1 === state.epoch) {
+      source.epoch = state.epoch;
+      return true;
+    }
     if (source.creating && source.createdId && source.createdId === conversationId()
       && source.epoch + 1 === state.epoch) {
       source.epoch = state.epoch;
@@ -512,7 +535,7 @@
       && source.epoch + 1 === state.epoch && Boolean(conversationId());
   }
 
-  function inspectObject(value, epoch = state.epoch) {
+  function inspectObject(value, epoch = state.epoch, via = "cloned response") {
     try {
       if (typeof epoch === "object" && epoch.creating && !epoch.createdId
         && typeof value?.conversation_id === "string") epoch.createdId = value.conversation_id;
@@ -522,7 +545,13 @@
         state.provisionalConversationId = epoch.createdId;
       }
       if (id && typeof value?.conversation_id === "string" && value.conversation_id !== id) return;
-      rememberRoutes(collectRoutes(value));
+      const routes = collectRoutes(value);
+      if (routes.length) {
+        state.acquisition.lastSource = via;
+        state.acquisition.lastUpdateAt = Date.now();
+        rememberRoutes(routes);
+        scheduleRender();
+      }
     } catch (_) {
       // This observer must never affect ChatGPT itself.
     }
@@ -574,12 +603,67 @@
     );
   }
 
+  function conversationResponseId(url) {
+    return url?.pathname.match(/^\/backend-api\/(?:f\/)?conversations?\/([0-9a-f-]{20,})\/?$/i)?.[1] || null;
+  }
+
+  function consumptionScope(response) {
+    if (observerOwnedResponses.has(response)) return null;
+    let url;
+    try { url = new URL(response.url); } catch (_) { return null; }
+    if (url.origin !== location.origin || !response.ok
+      || !(response.headers.get("content-type") || "").includes("json")) return null;
+    const id = conversationResponseId(url);
+    if (!id || id !== conversationId()) return null;
+    return responseScopes.get(response) || { epoch: state.epoch, requestId: id };
+  }
+
+  // The site normally reads JSON with response.text(), then aborts its fetch
+  // controller as cleanup. A parallel clone.json() can lose that race even
+  // after the primary reader has successfully received the complete body.
+  // Observe the primary consumer's successful result BEFORE returning it to
+  // the app, never replace its value, consume the body twice, capture request
+  // headers, or issue an authenticated request on the app's behalf.
+  for (const method of ["json", "text"]) {
+    const descriptor = Object.getOwnPropertyDescriptor(Response.prototype, method);
+    if (typeof descriptor?.value !== "function") continue;
+    const original = descriptor.value;
+    try {
+      Object.defineProperty(Response.prototype, method, { ...descriptor,
+        value: function (...args) {
+          let scope = null;
+          try { syncNavigation(); scope = consumptionScope(this); } catch (_) {}
+          const result = Reflect.apply(original, this, args);
+          if (!scope) return result;
+          return result.then((value) => {
+            try {
+              if (currentEpoch(scope) && (!scope.requestId || scope.requestId === conversationId())) {
+                const object = method === "json" ? value : JSON.parse(value);
+                state.acquisition.primaryReads += 1;
+                inspectObject(object, scope, `page response.${method}()`);
+              }
+            } catch (_) {
+              // Diagnostic failure must not change the app's value or rejection.
+              state.acquisition.primaryErrors += 1;
+            }
+            return value;
+          }, (error) => {
+            if (currentEpoch(scope)) { state.acquisition.primaryErrors += 1; scheduleRender(); }
+            throw error;
+          });
+        },
+      });
+    } catch (_) {
+      // Keep passive-clone/legacy behavior if a host locks its Response methods.
+    }
+  }
+
   const nativeFetch = window.fetch.bind(window);
   window.fetch = async function routeAwareFetch(input, init) {
     syncNavigation();
     let url = null;
     try { url = new URL(typeof input === "string" || input instanceof URL ? input : input.url, location.href); } catch (_) {}
-    const epoch = { epoch: state.epoch, createdId: null,
+    const epoch = { epoch: state.epoch, createdId: null, originConversationId: conversationId(),
       creating: !conversationId() && url?.origin === location.origin
         && /^\/backend-api\/(?:f\/)?conversation\/?$/.test(url.pathname)
         && String(init?.method || input?.method || "GET").toUpperCase() === "POST" };
@@ -587,12 +671,36 @@
     try {
       if (!url) return response;
       const requestId = url.pathname.match(/\/conversations?\/([0-9a-f-]{20,})(?:\/|$)/i)?.[1];
+      epoch.requestId = requestId || null;
+      responseScopes.set(response, epoch);
       if ((currentEpoch(epoch) || awaitingCreationId(epoch))
         && (!requestId || requestId === conversationId()) && shouldInspect(url, response)) {
-        const clone = response.clone();
-        const contentType = clone.headers.get("content-type") || "";
-        if (contentType.includes("text/event-stream")) void inspectEventStream(clone, epoch);
-        else if (contentType.includes("json")) void clone.json().then((value) => inspectObject(value, epoch)).catch(() => {});
+        const contentType = response.headers.get("content-type") || "";
+        if (contentType.includes("text/event-stream")) {
+          const clone = response.clone();
+          observerOwnedResponses.add(clone);
+          void inspectEventStream(clone, epoch);
+        } else if (contentType.includes("json")) {
+          // Let an ordinary text/json consumer start first. Do not allocate an
+          // extra unbounded tee for multi-megabyte conversation JSON when the
+          // app is already consuming it through the observed primary methods.
+          setTimeout(() => {
+            try {
+              if (response.bodyUsed || !currentEpoch(epoch)) return;
+              const clone = response.clone();
+              observerOwnedResponses.add(clone);
+              void clone.json().then((value) => {
+                state.acquisition.cloneReads += 1;
+                inspectObject(value, epoch, "cloned response");
+              }).catch((error) => {
+                if (currentEpoch(epoch) && error?.name === "AbortError") {
+                  state.acquisition.cloneAborts += 1;
+                  scheduleRender();
+                }
+              });
+            } catch (_) {}
+          }, 0);
+        }
       }
     } catch (_) {}
     return response;
@@ -603,31 +711,74 @@
     return match ? match[1] : null;
   }
 
+  function needsMetadata() {
+    const nodes = assistantNodes();
+    // Metadata-backed selectors cannot identify the assistant before the first
+    // payload. Permit one legacy bootstrap when message/turn IDs exist at all.
+    if (!nodes.length) return !state.routes.size
+      && Boolean(document.querySelector(MESSAGE_SELECTOR + "," + FIELD_SELECTOR + "," + TURN_SELECTOR));
+    return nodes.some((node) => {
+      const identity = assistantIdentity(node);
+      if (identity.messageId) return !state.routes.has(identity.messageId) && !identity.modelSlug;
+      if (identity.messageIds) return identity.messageIds.some((id) => !state.routes.get(id)?.authorRole)
+        || (!identity.messageIds.length && !identity.invalidIdLists && !state.routes.size);
+      return !routeForAssistant(node)?.actual;
+    });
+  }
+
   async function fetchConversationFallback() {
     syncNavigation();
     const epoch = state.epoch;
     const id = conversationId();
-    if (!id) return;
+    if (!id || state.fallbackDisabled || state.fallbackInFlight || !needsMetadata()) return;
     const now = Date.now();
     if (now - state.lastFallbackAt < 3000) {
       scheduleFallback(3000 - (now - state.lastFallbackAt));
       return;
     }
+    if (state.fallbackAttempts >= 3) return;
+    state.fallbackAttempts += 1;
     state.lastFallbackAt = now;
+    const controller = new AbortController();
+    state.fallbackInFlight = controller;
+    const timer = setTimeout(() => controller.abort(), 8000);
     const candidates = [
       `/backend-api/conversation/${encodeURIComponent(id)}`,
       `/backend-api/f/conversation/${encodeURIComponent(id)}`,
     ];
-    for (const path of candidates) {
-      try {
-        const response = await nativeFetch(path, { credentials: "include", cache: "no-store" });
+    let unsupported = 0;
+    state.acquisition.fallback = "legacy compatibility check";
+    try {
+      for (const path of candidates) {
+        if (!currentEpoch(epoch) || controller.signal.aborted) return;
+        const response = await nativeFetch(path, { credentials: "include", cache: "no-store", signal: controller.signal });
+        observerOwnedResponses.add(response);
         if (!currentEpoch(epoch)) return;
-        if (!response.ok) continue;
-        const contentType = response.headers.get("content-type") || "";
-        if (!contentType.includes("json")) continue;
-        inspectObject(await response.json(), epoch);
+        if ([401, 403].includes(response.status)) {
+          state.fallbackDisabled = true;
+          state.acquisition.fallback = `HTTP ${response.status}; awaiting normal page data`;
+          return;
+        }
+        if ([404, 410].includes(response.status)) { unsupported += 1; continue; }
+        if (!response.ok) { state.acquisition.fallback = `HTTP ${response.status}`; continue; }
+        if (!(response.headers.get("content-type") || "").includes("json")) continue;
+        const value = await response.json();
+        if (!currentEpoch(epoch)) return;
+        state.acquisition.fallback = "legacy metadata received";
+        inspectObject(value, epoch, "legacy conversation response");
         return;
-      } catch (_) {}
+      }
+      if (unsupported === candidates.length) {
+        state.fallbackDisabled = true;
+        state.acquisition.fallback = "legacy endpoints unavailable; awaiting normal page data";
+      }
+    } catch (error) {
+      if (currentEpoch(epoch)) state.acquisition.fallback = error?.name === "AbortError"
+        ? "legacy read timed out" : "legacy read failed";
+    } finally {
+      clearTimeout(timer);
+      if (state.fallbackInFlight === controller) state.fallbackInFlight = null;
+      if (currentEpoch(epoch)) scheduleRender();
     }
   }
 
@@ -979,6 +1130,8 @@
   function renderPage() {
     syncNavigation();
     const shadow = ensurePanel();
+    shadow.host.dataset.routeAcquisition = JSON.stringify({ ...state.acquisition,
+      routeRecords: state.routes.size, fallbackInFlight: Boolean(state.fallbackInFlight) });
     const pill = shadow.getElementById("pill");
     const detail = shadow.getElementById("detail");
     const assistants = assistantNodes();
@@ -1015,6 +1168,9 @@
     const row = (name, value, className = "") => `<div class="row"><span class="muted">${name}</span><span class="${className}">${escapeHtml(value || "—")}</span></div>`;
     detail.innerHTML = [
       row("script", VERSION),
+      row("data source", state.acquisition.lastSource),
+      row("page reads", String(state.acquisition.primaryReads)),
+      row("fallback", state.acquisition.fallback),
       row("binding", route.memberRoutes ? "exact assistant message set" : "individual message"),
       ...(route.memberRoutes ? [
         row("matched IDs", String(route.memberRoutes.length)),

@@ -31,6 +31,7 @@
   };
   return {
     scriptVersion: host?.dataset.scriptVersion || null,
+    acquisition: (() => { try { return JSON.parse(host?.dataset.routeAcquisition || "null"); } catch { return null; } })(),
     counts: {
       assistantRole: count('[data-conversation-role="assistant"]'),
       turnKeys: count('[data-turn-key]'),

@@ -1,0 +1,240 @@
+{
+  "version": "0.7.4",
+  "sha256": "5ea950e5afffe37bb796d030e2034b21c04f73fae9655d257a4826f56e321de6",
+  "baseline": {
+    "duplicate_read_results": {
+      "cloneParsed": 0,
+      "cloneFailed": 26
+    },
+    "primary_consumption": [
+      {
+        "method": "text",
+        "started": 410204.39999961853,
+        "completedMs": 397,
+        "bytes": 1996503,
+        "keys": null
+      },
+      {
+        "method": "text",
+        "started": 422606.09999990463,
+        "completedMs": 629,
+        "bytes": 1996503,
+        "keys": null
+      },
+      {
+        "method": "text",
+        "started": 435218.7999997139,
+        "completedMs": 836,
+        "bytes": 1996503,
+        "keys": null
+      },
+      {
+        "method": "text",
+        "started": 447814.2999997139,
+        "completedMs": 382,
+        "bytes": 1996503,
+        "keys": null
+      }
+    ],
+    "abort_timing": [
+      {
+        "started": 189324.89999961853,
+        "query": {
+          "num_turns": "10",
+          "include_has_versions": "true"
+        },
+        "status": 200,
+        "contentLength": null,
+        "type": "application/json",
+        "signalPresent": true,
+        "bytes": 2057889,
+        "complete": true,
+        "finishedMs": 2520,
+        "requestAbortedAtMs": 2529
+      },
+      {
+        "started": 201873.39999961853,
+        "query": {
+          "num_turns": "10",
+          "include_has_versions": "true"
+        },
+        "status": 200,
+        "contentLength": null,
+        "type": "application/json",
+        "signalPresent": true,
+        "bytes": 2057889,
+        "complete": true,
+        "finishedMs": 3469,
+        "requestAbortedAtMs": 3477
+      },
+      {
+        "started": 215358.59999990463,
+        "query": {
+          "num_turns": "10",
+          "include_has_versions": "true"
+        },
+        "status": 200,
+        "contentLength": null,
+        "type": "application/json",
+        "signalPresent": true,
+        "bytes": 2057889,
+        "complete": true,
+        "finishedMs": 3348,
+        "requestAbortedAtMs": 3355
+      },
+      {
+        "started": 228720.39999961853,
+        "query": {
+          "num_turns": "10",
+          "include_has_versions": "true"
+        },
+        "status": 200,
+        "contentLength": null,
+        "type": "application/json",
+        "signalPresent": true,
+        "bytes": 2057889,
+        "complete": true,
+        "finishedMs": 2585,
+        "requestAbortedAtMs": 2592
+      },
+      {
+        "started": 241321.39999961853,
+        "query": {
+          "num_turns": "10",
+          "include_has_versions": "true"
+        },
+        "status": 200,
+        "contentLength": null,
+        "type": "application/json",
+        "signalPresent": true,
+        "bytes": 2057889,
+        "complete": true,
+        "finishedMs": 2585,
+        "requestAbortedAtMs": 2596
+      },
+      {
+        "started": 253924.19999980927,
+        "query": {
+          "num_turns": "10",
+          "include_has_versions": "true"
+        },
+        "status": 200,
+        "contentLength": null,
+        "type": "application/json",
+        "signalPresent": true,
+        "bytes": 2057889,
+        "complete": true,
+        "finishedMs": 2481,
+        "requestAbortedAtMs": 2488
+      },
+      {
+        "started": 266425.09999990463,
+        "query": {
+          "num_turns": "10",
+          "include_has_versions": "true"
+        },
+        "status": 200,
+        "contentLength": null,
+        "type": "application/json",
+        "signalPresent": true,
+        "bytes": 2057889,
+        "complete": true,
+        "finishedMs": 2802,
+        "requestAbortedAtMs": 2809
+      },
+      {
+        "started": 279244.39999961853,
+        "query": {
+          "num_turns": "10",
+          "include_has_versions": "true"
+        }
+      }
+    ],
+    "old_fallback_http_statuses": [
+      404,
+      404
+    ],
+    "cookie_only_plural_status": 401,
+    "these_http_failures_were_recorded_in_previous_home_trace": true
+  },
+  "regression": {
+    "chromium": {
+      "ok": true,
+      "scenarios": 72,
+      "checks": 268,
+      "sha256": "5ea950e5afffe37bb796d030e2034b21c04f73fae9655d257a4826f56e321de6"
+    },
+    "firefox": {
+      "ok": true,
+      "scenarios": 72,
+      "checks": 268,
+      "sha256": "5ea950e5afffe37bb796d030e2034b21c04f73fae9655d257a4826f56e321de6"
+    }
+  },
+  "installed_live": {
+    "version": "0.7.4",
+    "acquisition": {
+      "primaryReads": 7,
+      "primaryErrors": 0,
+      "cloneReads": 0,
+      "cloneAborts": 0,
+      "lastSource": "page response.text()",
+      "lastUpdateAt": 1791452436713,
+      "fallback": "not attempted",
+      "routeRecords": 579,
+      "fallbackInFlight": false
+    },
+    "independentObserverAbsent": true,
+    "labels": [
+      {
+        "index": 0,
+        "label": "actual model: GPT-6 Pro / Astra",
+        "unmatched": 0,
+        "invalid": 0,
+        "ids": 1,
+        "readable": true
+      },
+      {
+        "index": 1,
+        "label": "actual model: GPT-6 Pro / Astra",
+        "unmatched": 0,
+        "invalid": 0,
+        "ids": 1,
+        "readable": true
+      },
+      {
+        "index": 2,
+        "label": "actual model: GPT-6 Pro / Astra",
+        "unmatched": 0,
+        "invalid": 0,
+        "ids": 1,
+        "readable": true
+      },
+      {
+        "index": 3,
+        "label": "actual model: GPT-6 Pro / Astra",
+        "unmatched": 0,
+        "invalid": 0,
+        "ids": 1,
+        "readable": true
+      }
+    ]
+  },
+  "cleanup": {
+    "browser_restarted": false,
+    "task_window_closed": true,
+    "original_windows": [
+      {
+        "preserved": true,
+        "handle": 3021968
+      }
+    ],
+    "chrome_pid": 67036,
+    "chrome_still_running": true
+  },
+  "proxy_restored": {
+    "error": null,
+    "mode": "pac_script",
+    "local8123": true
+  }
+}
