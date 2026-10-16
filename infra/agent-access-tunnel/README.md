@@ -127,6 +127,10 @@ admin.py clients lists logical clients without exposing credentials. Revoke one 
 - The gateway closes backend HTTP/1.1 connections after error responses. This prevents an
   unauthenticated request body from contaminating a reverse proxy's next keep-alive request.
 - A temporarily unavailable home tunnel returns a retryable 503. It does not delete pairing state.
+- A first-time installation without persistent Plugin credentials reports
+  `AGENT_ACCESS_PAIRING_REQUIRED`; a persisted credential that is rejected or
+  revoked reports `AGENT_ACCESS_CREDENTIAL_REJECTED`. These codes distinguish
+  authorization bootstrap from Plugin enablement or MCP registration failures.
 - The current MiniMax frontend is intentionally tools-only and does not expose the experimental
   WebAgentTools Events extension. The gateway currently buffers ordinary MCP responses rather than
   acting as a general long-lived event-stream relay.
