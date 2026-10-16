@@ -1,0 +1,15 @@
+[Unit]
+Description=Agent Access reverse tunnel for MiniMax WebAgentTools frontend
+After=network-online.target agent-access-minimax-mcp.service
+Wants=network-online.target agent-access-minimax-mcp.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ssh -NT -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o TCPKeepAlive=yes -R 127.0.0.1:18791:127.0.0.1:18791 tencent-cloud-2
+Restart=always
+RestartSec=5
+KillMode=control-group
+TimeoutStopSec=15
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,28 @@
+[Unit]
+Description=Vendor-neutral Agent Access authentication gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=agentaccess
+Group=agentaccess
+WorkingDirectory=/opt/agent-access-gateway/current/gateway
+Environment=AGENT_ACCESS_LISTEN=127.0.0.1:3250
+Environment=AGENT_ACCESS_UPSTREAM=http://127.0.0.1:18791
+Environment=AGENT_ACCESS_PUBLIC_BASE=https://sites.axelhu.com/agent-access
+Environment=AGENT_ACCESS_STATE_DIR=/var/lib/agent-access-gateway
+Environment=AGENT_ACCESS_PROFILES=minimax
+ExecStart=/usr/bin/python3 /opt/agent-access-gateway/current/gateway/agent_access_gateway.py
+Restart=always
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/agent-access-gateway
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

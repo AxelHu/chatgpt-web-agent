@@ -1,0 +1,4 @@
+# Place before the catch-all handle in sites.axelhu.com.
+handle_path /agent-access/* {
+    reverse_proxy 127.0.0.1:3250
+}
