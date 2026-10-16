@@ -1,0 +1,15 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "webagenttools-home",
+  "version": "0.2.0",
+  "description": "Transparent authenticated access to the user's trusted home WebAgentTools environment.",
+  "author": {
+    "name": "AxelHu"
+  },
+  "keywords": [
+    "mcp",
+    "local-environment",
+    "development",
+    "agent-access"
+  ]
+}
