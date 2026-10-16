@@ -42,6 +42,20 @@ STATE_PATH = os.environ.get(
 WRITE_LOCK = threading.Lock()
 ACCESS = {"token": None, "expires_at": 0}
 PROTOCOL_VERSION = {"value": None}
+PAIRING_REQUIRED_CODE = "AGENT_ACCESS_PAIRING_REQUIRED"
+CREDENTIAL_REJECTED_CODE = "AGENT_ACCESS_CREDENTIAL_REJECTED"
+PAIRING_REQUIRED_MESSAGE = (
+    PAIRING_REQUIRED_CODE
+    + ": the webagenttools-home Plugin is installed, but this MiniMax data environment "
+      "has not been authorized yet. Run the Plugin pairing command once; after approval, "
+      "future sessions authenticate automatically from persistent PLUGIN_DATA. "
+      "This is not a Plugin-enable or MCP-registration failure."
+)
+CREDENTIAL_REJECTED_MESSAGE = (
+    CREDENTIAL_REJECTED_CODE
+    + ": the persisted Agent Access credential was rejected or revoked. "
+      "Check Plugin status and pair this installation again only if it should remain authorized."
+)
 
 
 def request_json(path, body, bearer=None, timeout=30):
@@ -105,10 +119,10 @@ def get_access_token(force=False):
         return ACCESS["token"]
     refresh = load_refresh_token()
     if not refresh:
-        raise RuntimeError("Agent Access is not paired")
+        raise RuntimeError(PAIRING_REQUIRED_MESSAGE)
     status, result = request_json("/v1/auth/token", {"refresh_token": refresh}, timeout=20)
     if status != 200 or not isinstance(result.get("access_token"), str):
-        raise RuntimeError("Agent Access credential is unavailable or revoked")
+        raise RuntimeError(CREDENTIAL_REJECTED_MESSAGE)
     ACCESS["token"] = result["access_token"]
     ACCESS["expires_at"] = now + int(result.get("expires_in", 300))
     return ACCESS["token"]
@@ -144,14 +158,46 @@ def pair():
 def status_cmd():
     refresh = load_refresh_token()
     if not refresh:
-        print(json.dumps({"paired": False, "base_url": BASE_URL}, indent=2))
+        print(
+            json.dumps(
+                {
+                    "paired": False,
+                    "state": "pairing_required",
+                    "code": PAIRING_REQUIRED_CODE,
+                    "base_url": BASE_URL,
+                },
+                indent=2,
+            )
+        )
         return 1
     try:
         token = get_access_token(force=True)
-        print(json.dumps({"paired": True, "base_url": BASE_URL, "access_ready": bool(token)}, indent=2))
+        print(
+            json.dumps(
+                {
+                    "paired": True,
+                    "state": "ready",
+                    "base_url": BASE_URL,
+                    "access_ready": bool(token),
+                },
+                indent=2,
+            )
+        )
         return 0
     except Exception as exc:
-        print(json.dumps({"paired": True, "base_url": BASE_URL, "access_ready": False, "error": str(exc)}, indent=2))
+        print(
+            json.dumps(
+                {
+                    "paired": True,
+                    "state": "credential_rejected",
+                    "code": CREDENTIAL_REJECTED_CODE,
+                    "base_url": BASE_URL,
+                    "access_ready": False,
+                    "error": str(exc),
+                },
+                indent=2,
+            )
+        )
         return 2
 
 
@@ -239,7 +285,7 @@ def forward(message, retry_auth=True):
 
 def serve_stdio():
     if not load_refresh_token():
-        sys.stderr.write("webagenttools-home: pairing required; run bridge.py --pair outside the Agent turn\n")
+        sys.stderr.write("webagenttools-home: " + PAIRING_REQUIRED_MESSAGE + "\n")
         sys.stderr.flush()
     for line in sys.stdin:
         line = line.strip()
