@@ -1,0 +1,69 @@
+{
+  "case": 12,
+  "classification": "user-confirmed conversation hard max; public share treated as pre-limit lower-bound checkpoint",
+  "share_url": "https://chatgpt.com/share/6ad98c94-2040-83e8-a504-47a5a1bf864e",
+  "share_id": "6ad98c94-2040-83e8-a504-47a5a1bf864e",
+  "backing_conversation_id": "6ad7707f-6e30-83e8-85c2-06bb356e54ca",
+  "title": "放置增量开发",
+  "default_model_slug": "gpt-6-pro",
+  "linear_nodes": 6218,
+  "message_nodes": 6217,
+  "roles": {
+    "user": 37,
+    "assistant": 3058,
+    "tool": 3077,
+    "system": 45
+  },
+  "real_user_messages": 30,
+  "turn_exchanges": 34,
+  "assistant_tool_calls": 2574,
+  "tool_result_nodes": 3077,
+  "redacted_nodes": 4539,
+  "redacted_by_role": {
+    "tool": 3058,
+    "assistant": 1481
+  },
+  "tokens": {
+    "encoding": "o200k_base",
+    "visible_static_tokens": 150872,
+    "real_user_tokens": 6274,
+    "assistant_visible_tokens_excluding_redaction": 95261,
+    "model_continuations": 1686,
+    "visible_prefix_input_equivalent_tokens": 134743730,
+    "turn_start_visible_input_equivalent_tokens": 2564286
+  },
+  "serialization": {
+    "flat_slots": 141637,
+    "flat_payload_bytes": 7061948,
+    "share_html_bytes": 8441642
+  },
+  "time": {
+    "first_persisted_at": "2026-10-19T17:04:21+08:00",
+    "last_public_node_at": "2026-10-22T11:54:39+08:00",
+    "share_created_at": "2026-10-22T12:09:56+08:00",
+    "represented_lifetime_seconds": 240618.024822
+  },
+  "last_turn": {
+    "real_user_prompt": "继续完成前面回合的任务",
+    "public_start_position": 6142,
+    "nodes": 76,
+    "tool_calls": 34,
+    "tool_results": 30,
+    "normal_final_messages": 0,
+    "observed_span_seconds": 827.284822,
+    "public_tail": "assistant tool call",
+    "cloud_extra_tool_result_observed": true,
+    "cloud_terminal_message_id": null,
+    "cloud_terminal_receipt": null,
+    "desktop_renderer_status": "idle",
+    "bridge_activity_state": "conflict",
+    "bridge_conflict_reason": "current_node_mismatch",
+    "bridge_diagnosis": "transport_or_sync_unknown / terminal_receipt_missing"
+  },
+  "caveats": [
+    "The explicit product maximum warning is user-observed and not present in the public share.",
+    "The public share systematically omits the rejected/over-limit transient state.",
+    "Redacted tool/call payloads make all public token and byte metrics lower-bound proxies.",
+    "Desktop total_messages, native visible messages and public share nodes are different projections and must not be compared as the same counter."
+  ]
+}
