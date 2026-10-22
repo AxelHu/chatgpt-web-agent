@@ -158,8 +158,10 @@ export CHATGPT_WEB_AGENT_EXEC_ASK=off
 ## ChatGPT 账号自定义指令
 
 可精确恢复的正文存放于 [`docs/chatgpt-custom-instructions.md`](docs/chatgpt-custom-instructions.md)，
-包含外部内容与 MCP 授权边界，以及 Astra 长线任务的持续推进偏好。
+包含正常执行、资料使用、工具使用、故障恢复、长线推进和图像交付六段规则。
 该文件是手动填写账号设置的存档，不会自动加载；设置是否已填写以文档中的确认状态为准。
+工具发现、故障判断与 Drive 备用读取的操作参考见
+[`docs/webagenttools-discovery-and-recovery.md`](docs/webagenttools-discovery-and-recovery.md)。
 
 平台工具安全拒绝与本地执行故障的区分、会话读取及 M4 SSH 实测见
 [`docs/tool-safety-check-diagnostics.md`](docs/tool-safety-check-diagnostics.md)。
