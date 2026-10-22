@@ -163,6 +163,9 @@ export CHATGPT_WEB_AGENT_EXEC_ASK=off
 工具发现、故障判断与 Drive 备用读取的操作参考见
 [`docs/webagenttools-discovery-and-recovery.md`](docs/webagenttools-discovery-and-recovery.md)。
 
+本地 Codex 的全局 `AGENTS.md` 独立维护，Windows / WSL 安装位置、正文与审批核验记录见
+[`docs/codex-global-instructions.md`](docs/codex-global-instructions.md)。
+
 平台工具安全拒绝与本地执行故障的区分、会话读取及 M4 SSH 实测见
 [`docs/tool-safety-check-diagnostics.md`](docs/tool-safety-check-diagnostics.md)。
 
