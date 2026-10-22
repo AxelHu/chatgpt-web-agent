@@ -1,6 +1,13 @@
 {
   "case": 12,
   "classification": "user-confirmed conversation hard max; public share treated as pre-limit lower-bound checkpoint",
+  "rollout_correlation": {
+    "official_update_date": "2026-10-16",
+    "official_update_scope": "GPT-6 Pro Chat improved plugin/tool use and parallel multiple-agent orchestration",
+    "conversation_started_at": "2026-10-19T17:04:21+08:00",
+    "hard_max_observed_at": "2026-10-22",
+    "assessment": "suspected orchestration-era increase in persisted-state consumption rate; not evidence that the numeric hard cap itself was lowered"
+  },
   "share_url": "https://chatgpt.com/share/6ad98c94-2040-83e8-a504-47a5a1bf864e",
   "share_id": "6ad98c94-2040-83e8-a504-47a5a1bf864e",
   "backing_conversation_id": "6ad7707f-6e30-83e8-85c2-06bb356e54ca",

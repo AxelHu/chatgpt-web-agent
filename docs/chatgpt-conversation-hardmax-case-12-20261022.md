@@ -12,6 +12,8 @@ The public share does not contain the product warning itself. Consistent with th
 
 This is the first new local hard-max sample after issue #19 was closed for on-demand monitoring on 2026-10-16. It directly disproves the stronger interpretation that the newer Astra-era persistence/load improvements removed the conversation-level hard maximum.
 
+There is also a notable rollout correlation. OpenAI's 2026-10-16 ChatGPT release notes describe a GPT-6 Pro Chat update with improved plugin/tool use and multiple agents working on different parts of a task in parallel. This conversation began on 2026-10-19 and hit hard max on 2026-10-22, after roughly 46 days without a newly recorded local hard-max sample. The timing and the unusually high per-turn internal density justify tracking a **suspected orchestration-era regression in state-consumption rate**. They do **not** establish that OpenAI lowered the underlying numeric hard cap: the same observations can be explained by newer orchestration persisting more tool, subagent and continuation state per visible turn.
+
 ## Exact public checkpoint
 
 Measured with `scripts/analyze-chatgpt-share.py` and `o200k_base`:
@@ -185,6 +187,8 @@ References:
 
 - `https://help.openai.com/en/articles/6825453-chatgpt-release-notes`
 - `https://help.openai.com/en/articles/20001354-gpt-6-and-other-models-in-chatgpt`
+
+The 2026-10-16 release-note entry is the relevant orchestration change: improved use of plugins/tools and parallel multiple-agent work in GPT-6 Pro Chat.
 
 ## Reproduction / evidence commands
 
