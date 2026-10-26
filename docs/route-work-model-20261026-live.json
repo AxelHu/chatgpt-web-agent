@@ -1,0 +1,32 @@
+{
+  "ok": true,
+  "checked_at": "2026-10-26T03:00:19.599Z",
+  "read_only": true,
+  "mutations_performed": false,
+  "script_version": "0.8.0",
+  "web": {
+    "conversation_origin": "tpp",
+    "assistant_model_nodes": 373,
+    "distinct_model_slugs": [
+      "gpt-6-astra-wm"
+    ],
+    "latest_label": "GPT-6-Astra \u00b7 Work",
+    "latest_surface": "work",
+    "conversation_id_sha256_prefix": "947310b02b332e7b"
+  },
+  "native_work": {
+    "thread_model": "gpt-6-astra",
+    "catalog_display_name": "GPT-6-Astra",
+    "thread_id_sha256_prefix": "9be619e65c94c26b"
+  },
+  "equivalence": {
+    "web_canonical": "gpt-6-astra",
+    "native_canonical": "gpt-6-astra",
+    "same_work_model": true,
+    "same_as_chat_gpt6_pro": false
+  },
+  "privacy": {
+    "conversation_text_read_into_report": false,
+    "report_contains_route_metadata_only": true
+  }
+}

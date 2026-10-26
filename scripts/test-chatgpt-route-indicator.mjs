@@ -11,24 +11,50 @@ const context = vm.createContext({
 });
 vm.runInContext(source, context, { filename: "chatgpt-route-indicator.user.js" });
 const {
+  canonicalModel,
   routeFromMetadata,
   routeKey,
   mergeRoute,
   collectRoutes,
   chooseLatest,
   routeForIdentity,
+  parseMessageIds,
+  routeForMessageSet,
+  messageSetLabel,
   exceptionalStatus,
   sameModel,
   modelLabel,
   executionConcern,
   finiteTimestamp,
+  surfaceFromConversationOrigin,
+  resolveSurface,
 } = hook.exports;
 
 assert.equal(sameModel("gpt-6-astra", "gpt-6-pro"), true);
 assert.equal(sameModel("gpt-6-sol", "gpt-6-pro"), false);
 assert.equal(sameModel("gpt-6-luna", "gpt-6-pro"), false);
+assert.equal(sameModel("gpt-6-astra-wm", "gpt-6-astra"), true);
+assert.equal(sameModel("gpt-6-astra-wm", "gpt-6-pro"), false);
+assert.equal(sameModel("gpt-6-astra", "gpt-6-pro", "work"), false);
+assert.equal(canonicalModel("gpt-6-astra-wm"), "gpt-6-astra");
+assert.equal(canonicalModel("gpt-6-astra", "work"), "gpt-6-astra");
+assert.equal(surfaceFromConversationOrigin("tpp"), "work");
+assert.equal(surfaceFromConversationOrigin("work"), "work");
+assert.equal(surfaceFromConversationOrigin("chat"), "chat");
+assert.equal(resolveSurface("chat", "gpt-6-astra-wm"), "work");
+assert.equal(modelLabel("gpt-6-astra-wm"), "GPT-6-Astra · Work");
+assert.equal(modelLabel("gpt-6-astra", "work"), "GPT-6-Astra · Work");
+assert.equal(modelLabel("gpt-6-astra"), "GPT-6 Pro / Astra");
 assert.equal(modelLabel("gpt-6-sol"), "GPT-6 Sol");
 assert.equal(modelLabel("gpt-6-luna"), "GPT-6 Luna");
+for (const [slug, label] of [
+  ["gpt-6.1-sol", "GPT-6.1-Sol · Work"],
+  ["gpt-6-sol", "GPT-6-Sol · Work"],
+  ["gpt-6-luna", "GPT-6-Luna · Work"],
+  ["gpt-5.6-sol", "GPT-5.6-Sol · Work"],
+  ["gpt-5.6-terra", "GPT-5.6-Terra · Work"],
+  ["gpt-5.6-luna", "GPT-5.6-Luna · Work"],
+]) assert.equal(modelLabel(slug, "work"), label);
 assert.equal(finiteTimestamp(null), false);
 assert.equal(finiteTimestamp(undefined), false);
 assert.equal(finiteTimestamp(""), false);
@@ -86,6 +112,64 @@ const healthy = routeFromMetadata({
 });
 assert.equal(healthy.mismatch, false);
 assert.equal(healthy.actual, "gpt-6-pro");
+
+// Live Work data uses conversation_origin=tpp and persists a -wm transport
+// suffix, while the native Work model catalog/thread API uses the base slug.
+// Both identify the same Work model family; neither is a Chat GPT-6 Pro alias.
+const workRoutes = collectRoutes({
+  conversation_origin: "tpp",
+  mapping: {
+    final: { message: {
+      id: "work-final",
+      create_time: 35,
+      status: "finished_successfully",
+      author: { role: "assistant" },
+      content: { content_type: "text", parts: ["done"] },
+      recipient: "all",
+      metadata: {
+        model_slug: "gpt-6-astra-wm",
+        thinking_effort: "xhigh",
+        turn_exchange_id: "work-turn",
+      },
+    } },
+  },
+});
+assert.equal(workRoutes.length, 1);
+assert.equal(workRoutes[0].surface, "work");
+assert.equal(workRoutes[0].actual, "gpt-6-astra-wm");
+assert.equal(modelLabel(workRoutes[0].actual, workRoutes[0].surface), "GPT-6-Astra · Work");
+assert.equal(canonicalModel(workRoutes[0].actual, workRoutes[0].surface),
+  canonicalModel("gpt-6-astra", "work"));
+const workFinal = routeForIdentity({
+  messageId: "work-final",
+  turnId: "work-turn",
+  modelSlug: "gpt-6-astra-wm",
+  status: "finished_successfully",
+}, new Map(workRoutes.map((route) => [routeKey(route), route])));
+assert.equal(workFinal.surface, "work");
+assert.equal(executionConcern(workFinal), null);
+assert.equal(executionConcern(routeFromMetadata({
+  model_slug: "gpt-6-pro-wm",
+  thinking_effort: "xhigh",
+}, { surface: "work" })), null);
+const nativeWorkRoute = routeFromMetadata({
+  model_slug: "gpt-6-astra",
+  turn_exchange_id: "native-work-turn",
+}, {
+  messageId: "work-native",
+  authorRole: "assistant",
+  surface: "work",
+});
+const workMessageSet = routeForMessageSet({
+  messageIds: ["work-final", "work-native"],
+}, new Map([
+  ["work-final", workRoutes[0]],
+  ["work-native", nativeWorkRoute],
+]));
+assert.equal(workMessageSet.surface, "work");
+assert.equal(workMessageSet.actual, "gpt-6-astra");
+assert.equal(workMessageSet.actualModels.join(","), "gpt-6-astra");
+assert.ok(messageSetLabel(workMessageSet).includes("GPT-6-Astra · Work"));
 
 // A GPT-6 Pro turn can retain the expected model tag while losing the rest of
 // the execution lifecycle. This mirrors the observed degraded continuation:
@@ -312,7 +396,6 @@ assert.equal(routeForIdentity({turnId: "tool-only-turn"}, new Map(toolOnly.map(r
 assert.equal(mergeRoute(toolOnly[0], {messageId: "tool-only"}).authorRole, "tool");
 
 // Field-reported grouped IDs: accept only literal IDs, not attribute instructions.
-const {parseMessageIds, routeForMessageSet, messageSetLabel} = hook.exports;
 for (const value of ['a b', 'b,a,', '["b","a","a"]', '"b,a"']) {
   const parsed = parseMessageIds(value);
   assert.equal(parsed.valid, true);

@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         ChatGPT Actual Model Route
 // @namespace    https://chatgpt.com/
-// @version      0.7.4
-// @description  Show the concrete model recorded on each ChatGPT assistant message without collecting conversation text.
+// @version      0.8.0
+// @description  Show the concrete persisted model on ChatGPT Chat and Work assistant messages without collecting conversation text.
 // @match        https://chatgpt.com/*
 // @run-at       document-start
 // @grant        none
@@ -12,36 +12,78 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.7.4";
+  const VERSION = "0.8.0";
   const testHook = globalThis.__CHATGPT_ROUTE_INDICATOR_TEST__;
   const GPT6_ALIASES = new Set(["gpt-6-pro", "gpt-6-astra", "gpt-6-astra-pro"]);
+  const WORK_ORIGINS = new Set(["tpp", "work"]);
+  const WORK_SUFFIX = "-wm";
   const ROUTE_KEYS = ["default_model_slug", "requested_model_slug", "resolved_model_slug", "model_slug"];
+  const CHAT_MODEL_LABELS = {
+    "gpt-6-pro": "GPT-6 Pro / Astra",
+    "gpt-6-astra": "GPT-6 Pro / Astra",
+    "gpt-6-astra-pro": "GPT-6 Pro / Astra",
+    "gpt-6-sol": "GPT-6 Sol",
+    "gpt-6-luna": "GPT-6 Luna",
+    "gpt-5-4-auto-thinking": "GPT-5.4 Auto",
+    "gpt-5-4-thinking": "GPT-5.4 Thinking",
+    "gpt-5-6-thinking": "GPT-5.6 Thinking",
+    "gpt-5.6-sol": "GPT-5.6 Sol",
+    "gpt-5-6": "GPT-5.6",
+  };
+  // These display names come from the live native Work model/list catalog.
+  // Persisted chatgpt.com Work conversations add the transport suffix "-wm";
+  // the Desktop Bridge/native thread API reports the same family without it.
+  const WORK_MODEL_LABELS = {
+    "gpt-6.1-sol": "GPT-6.1-Sol",
+    "gpt-6-astra": "GPT-6-Astra",
+    "gpt-6-sol": "GPT-6-Sol",
+    "gpt-6-luna": "GPT-6-Luna",
+    "gpt-5.6-sol": "GPT-5.6-Sol",
+    "gpt-5.6-terra": "GPT-5.6-Terra",
+    "gpt-5.6-luna": "GPT-5.6-Luna",
+  };
 
-  function canonicalModel(value) {
-    if (typeof value !== "string" || !value) return null;
-    return GPT6_ALIASES.has(value) ? "gpt-6-pro" : value;
+  function isWorkModelSlug(value) {
+    return typeof value === "string" && value.endsWith(WORK_SUFFIX);
   }
 
-  function sameModel(left, right) {
-    const a = canonicalModel(left);
-    const b = canonicalModel(right);
+  function surfaceFromConversationOrigin(value) {
+    if (typeof value !== "string" || !value) return null;
+    return WORK_ORIGINS.has(value.toLowerCase()) ? "work" : "chat";
+  }
+
+  function resolveSurface(surface, ...slugs) {
+    // A persisted -wm slug is direct Work evidence and must win even if an
+    // earlier metadata-free SSE node provisionally looked like ordinary Chat.
+    if (slugs.some(isWorkModelSlug)) return "work";
+    if (surface === "work" || surface === "chat") return surface;
+    return "chat";
+  }
+
+  function workBaseModel(value) {
+    return isWorkModelSlug(value) ? value.slice(0, -WORK_SUFFIX.length) : value;
+  }
+
+  function canonicalModel(value, surface = null) {
+    if (typeof value !== "string" || !value) return null;
+    const mode = resolveSurface(surface, value);
+    const base = mode === "work" ? workBaseModel(value) : value;
+    return mode === "chat" && GPT6_ALIASES.has(base) ? "gpt-6-pro" : base;
+  }
+
+  function sameModel(left, right, surface = null) {
+    const mode = resolveSurface(surface, left, right);
+    const a = canonicalModel(left, mode);
+    const b = canonicalModel(right, mode);
     return a !== null && b !== null && a === b;
   }
 
-  function modelLabel(slug) {
-    const labels = {
-      "gpt-6-pro": "GPT-6 Pro / Astra",
-      "gpt-6-astra": "GPT-6 Pro / Astra",
-      "gpt-6-astra-pro": "GPT-6 Pro / Astra",
-      "gpt-6-sol": "GPT-6 Sol",
-      "gpt-6-luna": "GPT-6 Luna",
-      "gpt-5-4-auto-thinking": "GPT-5.4 Auto",
-      "gpt-5-4-thinking": "GPT-5.4 Thinking",
-      "gpt-5-6-thinking": "GPT-5.6 Thinking",
-      "gpt-5.6-sol": "GPT-5.6 Sol",
-      "gpt-5-6": "GPT-5.6",
-    };
-    return labels[slug] || slug || "unknown";
+  function modelLabel(slug, surface = null) {
+    if (typeof slug !== "string" || !slug) return "unknown";
+    const mode = resolveSurface(surface, slug);
+    const base = mode === "work" ? workBaseModel(slug) : slug;
+    const label = (mode === "work" ? WORK_MODEL_LABELS : CHAT_MODEL_LABELS)[base] || base;
+    return mode === "work" ? `${label} · Work` : label;
   }
 
   function exceptionalStatus(metadata, fallback = {}) {
@@ -78,6 +120,8 @@
     const resolved = typeof metadata.resolved_model_slug === "string" ? metadata.resolved_model_slug : null;
     const expected = typeof metadata.default_model_slug === "string" ? metadata.default_model_slug : null;
     const requested = typeof metadata.requested_model_slug === "string" ? metadata.requested_model_slug : null;
+    const originSurface = surfaceFromConversationOrigin(fallback.conversationOrigin);
+    const surface = resolveSurface(fallback.surface || originSurface, actual, resolved, expected, requested);
     const thinkingEffort = typeof metadata.thinking_effort === "string"
       ? metadata.thinking_effort
       : typeof fallback.thinkingEffort === "string" ? fallback.thinkingEffort : null;
@@ -116,6 +160,7 @@
       requested,
       actual,
       resolved,
+      surface,
       authorRole,
       thinkingEffort,
       reasoningStatus,
@@ -123,9 +168,9 @@
       toolObserved,
       status,
       source: fallback.source || "metadata",
-      mismatch: Boolean(expected && actual && !sameModel(expected, actual)),
-      resolutionChanged: Boolean(resolved && actual && !sameModel(resolved, actual)),
-      override: Boolean(expected && requested && !sameModel(expected, requested)),
+      mismatch: Boolean(expected && actual && !sameModel(expected, actual, surface)),
+      resolutionChanged: Boolean(resolved && actual && !sameModel(resolved, actual, surface)),
+      override: Boolean(expected && requested && !sameModel(expected, requested, surface)),
     };
   }
 
@@ -155,6 +200,7 @@
       requested: next.requested || previous.requested || null,
       actual: next.actual || previous.actual || null,
       resolved: next.resolved || previous.resolved || null,
+      surface: next.surface || previous.surface || null,
       authorRole: next.authorRole || previous.authorRole || null,
       thinkingEffort: next.thinkingEffort || previous.thinkingEffort || null,
       reasoningStatus: next.reasoningStatus || previous.reasoningStatus || null,
@@ -163,20 +209,28 @@
       status: next.status || previous.status || null,
       source: next.source || previous.source || "metadata",
     };
-    merged.mismatch = Boolean(merged.expected && merged.actual && !sameModel(merged.expected, merged.actual));
-    merged.resolutionChanged = Boolean(merged.resolved && merged.actual && !sameModel(merged.resolved, merged.actual));
-    merged.override = Boolean(merged.expected && merged.requested && !sameModel(merged.expected, merged.requested));
+    merged.surface = resolveSurface(merged.surface, merged.actual, merged.resolved, merged.expected, merged.requested);
+    merged.mismatch = Boolean(merged.expected && merged.actual && !sameModel(merged.expected, merged.actual, merged.surface));
+    merged.resolutionChanged = Boolean(merged.resolved && merged.actual && !sameModel(merged.resolved, merged.actual, merged.surface));
+    merged.override = Boolean(merged.expected && merged.requested && !sameModel(merged.expected, merged.requested, merged.surface));
     return merged;
   }
 
-  function collectRoutes(value) {
+  function collectRoutes(value, options = {}) {
     const routes = [];
     const seen = new Set();
-    const visit = (node, depth) => {
+    const rootSurface = options.surface
+      || surfaceFromConversationOrigin(value?.conversation_origin)
+      || surfaceFromConversationOrigin(value?.conversation?.conversation_origin)
+      || null;
+    const visit = (node, depth, inheritedSurface = rootSurface) => {
       if (!node || typeof node !== "object" || depth > 32 || seen.has(node)) return;
       seen.add(node);
+      const localSurface = surfaceFromConversationOrigin(node.conversation_origin)
+        || surfaceFromConversationOrigin(node.conversation?.conversation_origin)
+        || inheritedSurface;
       if (Array.isArray(node)) {
-        for (const item of node) visit(item, depth + 1);
+        for (const item of node) visit(item, depth + 1, localSurface);
         return;
       }
 
@@ -194,17 +248,18 @@
           authorRole,
           recipient: typeof node.recipient === "string" ? node.recipient : null,
           contentType,
+          surface: localSurface,
         });
         if (route) routes.push(route);
       }
 
-      if (node.message && typeof node.message === "object") visit(node.message, depth + 1);
+      if (node.message && typeof node.message === "object") visit(node.message, depth + 1, localSurface);
       for (const [key, child] of Object.entries(node)) {
         if (key === "message" || key === "metadata" || key === "content" || key === "parts") continue;
-        if (child && typeof child === "object") visit(child, depth + 1);
+        if (child && typeof child === "object") visit(child, depth + 1, localSurface);
       }
     };
-    visit(value, 0);
+    visit(value, 0, rootSurface);
     return routes;
   }
 
@@ -273,7 +328,9 @@
     }
     const common = (key) => members.length && members.every((item) => item[key] === members[0][key])
       ? members[0][key] || null : null;
-    const actualModels = [...new Set(members.filter((item) => item.actual).map((item) => canonicalModel(item.actual)))].sort();
+    const surface = common("surface") || resolveSurface(null, ...members.map((item) => item.actual));
+    const actualModels = [...new Set(members.filter((item) => item.actual)
+      .map((item) => canonicalModel(item.actual, item.surface || surface)))].sort();
     const knownCount = members.filter((item) => item.actual).length;
     const complete = members.length > 0 && knownCount === members.length
       && !unmapped.length && !identity.invalidIdLists;
@@ -281,6 +338,7 @@
       messageId: members.length === 1 ? members[0].messageId : null,
       turnExchangeId: common("turnExchangeId"),
       actual: complete && actualModels.length === 1 ? actualModels[0] : null,
+      surface,
       actualModels, memberRoutes: members, knownCount, unmappedMessageIds: unmapped,
       excludedCount, invalidIdLists: identity.invalidIdLists || 0,
       expected: common("expected"), requested: common("requested"), resolved: common("resolved"),
@@ -300,7 +358,7 @@
   function messageSetLabel(route) {
     if (!route.memberRoutes || (route.memberRoutes.length === 1
       && !route.unmappedMessageIds.length && !route.invalidIdLists)) return null;
-    const models = route.actualModels.map(modelLabel).join(" / ");
+    const models = route.actualModels.map((slug) => modelLabel(slug, route.surface)).join(" / ");
     const count = route.memberRoutes.length;
     const incomplete = route.knownCount < count || route.unmappedMessageIds.length || route.invalidIdLists;
     if (incomplete) return [
@@ -340,7 +398,7 @@
     if (!result && identity.turnId) {
       const peers = values.filter((route) => assistantRoute(route)
         && route.actual && route.turnExchangeId === identity.turnId);
-      const models = new Set(peers.map((route) => canonicalModel(route.actual)));
+      const models = new Set(peers.map((route) => canonicalModel(route.actual, route.surface)));
       if (models.size === 1) {
         const sibling = chooseLatest(peers);
         result = { ...sibling, messageId: identity.messageId || null,
@@ -373,6 +431,7 @@
         requested: null,
         actual: null,
         resolved: null,
+        surface: resolveSurface(null, identity.modelSlug),
         status: exceptionalStatus({}, { status: identity.status }) || "unavailable",
         source: "no model metadata",
         mismatch: false,
@@ -399,7 +458,8 @@
   }
 
   function executionConcern(route) {
-    if (!route || !sameModel(route.actual, "gpt-6-pro")) return null;
+    if (!route || route.surface === "work"
+      || !sameModel(route.actual, "gpt-6-pro", route.surface)) return null;
     const effort = route.turnThinkingEffort || route.thinkingEffort;
     if (!["standard", "medium", "high", "xhigh", "max"].includes(effort)) return null;
     if (route.status && route.status !== "unavailable") return null;
@@ -412,6 +472,9 @@
       canonicalModel,
       sameModel,
       modelLabel,
+      isWorkModelSlug,
+      surfaceFromConversationOrigin,
+      resolveSurface,
       finiteTimestamp,
       exceptionalStatus,
       routeFromMetadata,
@@ -432,6 +495,7 @@
     routes: new Map(),
     recentConversations: new Map(),
     latest: null,
+    surface: null,
     path: location.pathname,
     provisionalConversationId: null,
     epoch: 0,
@@ -453,6 +517,7 @@
   function rememberRoutes(routes) {
     let changed = false;
     for (const route of routes) {
+      if (route.surface === "work" || (!state.surface && route.surface)) state.surface = route.surface;
       const key = routeKey(route);
       const previous = state.routes.get(key);
       const next = mergeRoute(previous, route);
@@ -492,6 +557,9 @@
     if (!creatingThisChat) {
       state.routes = new Map(cached || []);
       state.latest = chooseLatest([...state.routes.values()]);
+      state.surface = state.latest?.surface
+        || [...state.routes.values()].find((route) => route.surface)?.surface
+        || null;
     }
     state.provisionalConversationId = null;
     state.fallbackInFlight?.abort();
@@ -545,7 +613,11 @@
         state.provisionalConversationId = epoch.createdId;
       }
       if (id && typeof value?.conversation_id === "string" && value.conversation_id !== id) return;
-      const routes = collectRoutes(value);
+      const observedSurface = surfaceFromConversationOrigin(value?.conversation_origin)
+        || surfaceFromConversationOrigin(value?.conversation?.conversation_origin)
+        || null;
+      if (observedSurface === "work" || (!state.surface && observedSurface)) state.surface = observedSurface;
+      const routes = collectRoutes(value, { surface: observedSurface || state.surface });
       if (routes.length) {
         state.acquisition.lastSource = via;
         state.acquisition.lastUpdateAt = Date.now();
@@ -1098,17 +1170,18 @@
       badge.dataset.routeUnmatchedCount = String(route.unmappedMessageIds?.length || 0);
       badge.dataset.routeInvalidLists = String(route.invalidIdLists || 0);
       badge.dataset.routeTurnKey = identity.turnKey || "";
+      badge.dataset.routeSurface = route.surface || "";
       const setLabel = messageSetLabel(route);
       if (setLabel) {
         if (badge.textContent !== setLabel) badge.textContent = setLabel;
         badge.style.color = route.actualModels.length > 1 || !route.actual ? "#d97706" : "#64748b";
       } else if (route.actual) {
-        const actual = modelLabel(route.actual);
+        const actual = modelLabel(route.actual, route.surface);
         const status = route.status ? ` · ${route.status}` : "";
         const runtimeConcern = executionConcern(route);
         const strongWarning = route.mismatch || route.resolutionChanged || (route.status && route.status !== "unavailable");
         const text = route.mismatch && route.expected
-          ? `⚠ actual model: ${modelLabel(route.expected)} → ${actual}${status}`
+          ? `⚠ actual model: ${modelLabel(route.expected, route.surface)} → ${actual}${status}`
           : runtimeConcern
             ? `? actual model: ${actual} · execution signal incomplete${status}`
             : `actual model: ${actual}${status}`;
@@ -1116,7 +1189,7 @@
         if (badge.textContent !== text) badge.textContent = text;
         if (badge.style.color !== color) badge.style.color = color;
       } else {
-        const text = `actual model: unknown${route.resolved ? ` · resolved route: ${modelLabel(route.resolved)}` : ""}${route.status ? ` · ${route.status}` : ""}`;
+        const text = `actual model: unknown${route.resolved ? ` · resolved route: ${modelLabel(route.resolved, route.surface)}` : ""}${route.status ? ` · ${route.status}` : ""}`;
         if (badge.textContent !== text) badge.textContent = text;
         const color = route.status && route.status !== "unavailable" ? "#d97706" : "#64748b";
         if (badge.style.color !== color) badge.style.color = color;
@@ -1131,7 +1204,7 @@
     syncNavigation();
     const shadow = ensurePanel();
     shadow.host.dataset.routeAcquisition = JSON.stringify({ ...state.acquisition,
-      routeRecords: state.routes.size, fallbackInFlight: Boolean(state.fallbackInFlight) });
+      surface: state.surface, routeRecords: state.routes.size, fallbackInFlight: Boolean(state.fallbackInFlight) });
     const pill = shadow.getElementById("pill");
     const detail = shadow.getElementById("detail");
     const assistants = assistantNodes();
@@ -1148,7 +1221,7 @@
       detail.innerHTML = `<div class="muted">No visible assistant response could be matched. Latest metadata is not substituted for the focused response.</div><div class="muted">Script ${VERSION} · ${state.routes.size} metadata records</div>`;
       return;
     }
-    const actual = route.actual ? modelLabel(route.actual) : null;
+    const actual = route.actual ? modelLabel(route.actual, route.surface) : null;
     const exceptional = route.status && route.status !== "unavailable";
     const runtimeConcern = executionConcern(route);
     const strongWarning = route.mismatch || route.resolutionChanged || exceptional;
@@ -1157,17 +1230,21 @@
     const setLabel = messageSetLabel(route);
     pill.textContent = setLabel ? setLabel.replace(/^actual/, "Actual") : actual
       ? (route.mismatch && route.expected
-        ? `⚠ Actual ${modelLabel(route.expected)} → ${actual}${status}`
+        ? `⚠ Actual ${modelLabel(route.expected, route.surface)} → ${actual}${status}`
         : runtimeConcern
           ? `? Actual · ${actual} · execution signal incomplete${status}`
           : `Actual · ${actual}${status}`)
-      : `Actual · unknown${route.resolved ? ` · resolved ${modelLabel(route.resolved)}` : ""}${status}`;
+      : `Actual · unknown${route.resolved ? ` · resolved ${modelLabel(route.resolved, route.surface)}` : ""}${status}`;
     pill.dataset.focusedMessageId = identity.messageId || route.messageId || "";
     pill.dataset.focusedMessageIds = JSON.stringify(route.memberRoutes?.map((item) => item.messageId) || (route.messageId ? [route.messageId] : []));
     pill.dataset.focusedTurnKey = identity.turnKey || "";
     const row = (name, value, className = "") => `<div class="row"><span class="muted">${name}</span><span class="${className}">${escapeHtml(value || "—")}</span></div>`;
+    const recordedSlugs = route.memberRoutes
+      ? [...new Set(route.memberRoutes.map((item) => item.actual).filter(Boolean))].join(" / ")
+      : route.actual;
     detail.innerHTML = [
       row("script", VERSION),
+      row("surface", route.surface === "work" ? "Work / tpp" : "Chat"),
       row("data source", state.acquisition.lastSource),
       row("page reads", String(state.acquisition.primaryReads)),
       row("fallback", state.acquisition.fallback),
@@ -1179,13 +1256,14 @@
         row("invalid lists", String(route.invalidIdLists)),
         row("turn key", identity.turnKey ? identity.turnKey.slice(0, 24) : null),
         ...route.memberRoutes.slice(0, 20).map((item) => row(item.messageId.slice(0, 8) + "…",
-          `${modelLabel(item.actual)}${item.status ? " · " + item.status : ""}`)),
+          `${modelLabel(item.actual, item.surface || route.surface)}${item.status ? " · " + item.status : ""}`)),
         route.memberRoutes.length > 20 ? row("more IDs", String(route.memberRoutes.length - 20)) : "",
       ] : []),
-      row("default", modelLabel(route.expected), route.mismatch ? "warnText" : "goodText"),
-      row("requested", modelLabel(route.requested)),
-      row("resolved", modelLabel(route.resolved)),
+      row("default", modelLabel(route.expected, route.surface), route.mismatch ? "warnText" : "goodText"),
+      row("requested", modelLabel(route.requested, route.surface)),
+      row("resolved", modelLabel(route.resolved, route.surface)),
       row("actual", actual || (route.actualModels?.length > 1 ? "multiple (see matched IDs)" : "unknown"), strongWarning ? "warnText" : runtimeConcern ? "suspectText" : "goodText"),
+      row("recorded slug", recordedSlugs),
       row("thinking", route.turnThinkingEffort || route.thinkingEffort),
       row("reasoning", route.turnReasoningObserved ? "observed" : "not observed"),
       row("tool signal", route.turnToolObserved ? "observed" : "not observed"),

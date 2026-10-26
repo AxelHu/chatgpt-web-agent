@@ -4,7 +4,7 @@
 `chatgpt.com`. It makes persisted model-routing metadata visible while leaving the
 normal ChatGPT UI and request flow intact.
 
-Current release: **0.7.4**. See [the metadata acquisition fix](route-metadata-20261008.md). The company-side 0.7.0 live test failed; the
+Current release: **0.8.0**. See [the Work model-label verification](route-work-model-20261026.md) and [the metadata acquisition fix](route-metadata-20261008.md). The company-side 0.7.0 live test failed; the
 [field follow-up and company retest handoff](route-ui-field-20261008.md) documents
 the correction and its still-pending onsite acceptance. The new adapter handles
 `data-conversation-role`, `data-turn-key`, `data-chatgpt-agent-turn-start`, grouped
@@ -23,7 +23,12 @@ It reports the fields that ChatGPT itself persists on assistant nodes:
   therefore the value displayed as **actual**.
 
 A warning is shown when an explicit persisted default and concrete message model
-differ after the small known GPT-6 Pro/Astra alias normalization. GPT-6 Sol and
+differ after the small known ordinary-Chat GPT-6 Pro/Astra alias normalization.
+Work is a separate surface: `conversation_origin: tpp` and persisted `*-wm` model
+slugs are labelled from the native Work model catalog, not from Chat aliases.
+For example, persisted `gpt-6-astra-wm` and native Work `gpt-6-astra` are one Work
+model and display as **GPT-6-Astra · Work**; they are not relabelled as ordinary
+Chat **GPT-6 Pro / Astra**. GPT-6 Sol and
 GPT-6 Luna are intentionally treated as distinct concrete models, not aliases of
 GPT-6 Pro/Astra. A separate note
 is shown when the resolved route and concrete model differ. For example, a final
@@ -49,7 +54,8 @@ only when its concrete model is unambiguous. Message identity remains preferred:
 reasoning and final nodes in one turn can legitimately have different models.
 When no visible response can be matched, the floating badge says **no reply
 matched**, rather than disguising a locator failure with the global latest model.
-Clicking the badge shows the route fields, shortened IDs, and script version.
+Clicking the badge shows the route fields, surface, exact persisted slug,
+shortened IDs, and script version.
 
 DOM replacements, deleted labels and attribute-only message/turn ID changes trigger
 reattachment. Rendering is coalesced without waiting for streaming to become idle;
@@ -81,7 +87,7 @@ node scripts/test-chatgpt-route-indicator-browser.mjs
 ROUTE_TEST_BROWSER=firefox node scripts/test-chatgpt-route-indicator-browser.mjs
 ```
 Version 0.6 also adds a deliberately conservative execution-health warning for
-GPT-6 Pro/Astra. If a turn records a nonzero thinking effort but the whole turn
+ordinary-Chat GPT-6 Pro/Astra. If a turn records a nonzero thinking effort but the whole turn
 contains no resolved-route evidence, no reasoning-lifecycle node, and no tool
 execution signal, the badge shows **execution signal incomplete** with a distinct
 suspect style. This is intentionally separate from the stronger wrong-model
@@ -123,3 +129,31 @@ not a duplicate read that can be aborted by the app after its own read completes
 The expanded badge and read-only diagnostic include acquisition counters/source.
 Unsupported legacy fallback endpoints are no longer retried indefinitely. No auth
 credentials are acquired or replayed; missing model evidence remains unknown.
+
+## 0.8.0 — Work-aware model identity
+
+The script now distinguishes ordinary Chat from Work before normalizing model
+identity. A Work surface is established by `conversation_origin: tpp` / `work` or
+by the persisted `-wm` suffix; the suffix is direct evidence and wins over an
+earlier metadata-free streaming fragment that provisionally looked like Chat.
+
+Work model labels follow the live native Work `model/list` display names. The
+browser persistence suffix is removed only for Work-family comparison, so
+`gpt-6-astra-wm` and native `gpt-6-astra` compare equal in Work while
+`gpt-6-astra-wm` and ordinary-Chat `gpt-6-pro` do not. Ordinary Chat retains its
+existing GPT-6 Pro/Astra alias behavior. The Chat-only execution-signal warning is
+not applied to Work Astra merely because its reasoning effort is nonzero.
+
+The authenticated, read-only verification on 2026-10-26 observed a real Work
+conversation with `conversation_origin: tpp` and 373 assistant model nodes, all
+persisted as `gpt-6-astra-wm`; the corresponding native Work thread reported
+`gpt-6-astra`, whose catalog display name was `GPT-6-Astra`. Version 0.8.0 rendered
+the result as **GPT-6-Astra · Work** and preserved the raw persisted slug in the
+detail panel. Chromium and Firefox each passed all 74 synthetic DOM/network
+scenarios and 282 assertions, including Work → Chat → cached Work SPA navigation.
+See [the verification report](route-work-model-20261026.md).
+
+The userscript still runs only on `https://chatgpt.com/*`; it does not inject into
+the Desktop application's `app://-` renderer. Native Work reads were used only to
+verify the model identity and catalog label. Updating the repository does not by
+itself update an already installed Tampermonkey copy.

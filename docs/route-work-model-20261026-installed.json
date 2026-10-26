@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "checked_at": "2026-10-26T02:59:03.556502+00:00",
+  "read_only": true,
+  "storage_modified": false,
+  "browser_profile": "Chrome Default",
+  "manager": {
+    "name": "Tampermonkey",
+    "version": "5.5.1",
+    "extension_id": "dhdgffkkebhmkfjojejmpbldmpobfkfo"
+  },
+  "script": {
+    "name": "ChatGPT Actual Model Route",
+    "enabled": true,
+    "installed_version": "0.7.4",
+    "download_url": "https://raw.githubusercontent.com/AxelHu/chatgpt-web-agent/d370c4d08799f30b50adcb6f0890ee3c1d2f7d98/userscripts/chatgpt-route-indicator.user.js",
+    "repository_version": "0.8.0",
+    "up_to_date": false
+  },
+  "evidence": {
+    "latest_matching_record_offset": 1232094,
+    "source": "Chrome Default Tampermonkey active LevelDB log"
+  }
+}

@@ -14,6 +14,7 @@ const B='22222222-2222-2222-2222-222222222222';
 const badge='[data-chatgpt-actual-route="true"]';
 const msg=(id,model,extra={},role='assistant')=>({id,author:{role},create_time:id==='a'?1:2,content:{content_type:'text',parts:[]},metadata:{model_slug:model,turn_exchange_id:`turn-${id}`,...extra}});
 const payload=(messages,id)=>({...(id?{conversation_id:id}:{}),mapping:Object.fromEntries(messages.map(m=>[m.id,{message:m}]))});
+const workPayload=(messages,id)=>({...payload(messages,id),conversation_origin:'tpp'});
 const legacy=(id,attrs='')=>`<article data-turn-id="turn-${id}"><div data-message-author-role="assistant" data-message-id="${id}" ${attrs}><p>Synthetic reply ${id}</p></div></article>`;
 const modern=(id,attrs='')=>`<article data-turn="assistant" data-turn-id="turn-${id}"><div data-message-id="${id}" ${attrs}><p>Synthetic reply ${id}</p></div></article>`;
 const report={version:source.match(/@version\s+(.+)/)?.[1].trim(),sha256:createHash('sha256').update(source).digest('hex'),at:new Date().toISOString(),browser:engineName,mode:'synthetic DOM/network regression, not a live ChatGPT acceptance test',checks:0,cases:[]};
@@ -21,10 +22,41 @@ const eq=(actual,expected,note)=>{assert.equal(actual,expected,note);report.chec
 const ok=(value,note)=>{assert.ok(value,note);report.checks++};
 const cases=[];
 const test=(name,spec,run)=>cases.push({name,spec,run});
-const snapshot=page=>page.evaluate(()=>({labels:[...document.querySelectorAll('[data-chatgpt-actual-route="true"]')].map(n=>({id:n.parentElement.closest('[data-message-id]')?.dataset.messageId||null,text:n.textContent,parent:n.parentElement.tagName})),pill:document.getElementById('chatgpt-route-indicator-host')?.shadowRoot?.getElementById('pill')?.textContent,focused:document.getElementById('chatgpt-route-indicator-host')?.shadowRoot?.getElementById('pill')?.dataset.focusedMessageId,version:document.getElementById('chatgpt-route-indicator-host')?.dataset.scriptVersion}));
+const snapshot=page=>page.evaluate(()=>({labels:[...document.querySelectorAll('[data-chatgpt-actual-route="true"]')].map(n=>({id:n.parentElement.closest('[data-message-id]')?.dataset.messageId||null,text:n.textContent,parent:n.parentElement.tagName,surface:n.dataset.routeSurface||null})),pill:document.getElementById('chatgpt-route-indicator-host')?.shadowRoot?.getElementById('pill')?.textContent,focused:document.getElementById('chatgpt-route-indicator-host')?.shadowRoot?.getElementById('pill')?.dataset.focusedMessageId,version:document.getElementById('chatgpt-route-indicator-host')?.dataset.scriptVersion}));
 async function waitLabel(page,id,text){await page.waitForFunction(({id,text})=>[...document.querySelectorAll('[data-chatgpt-actual-route="true"]')].some(n=>(id===null||n.parentElement.closest('[data-message-id]')?.dataset.messageId===id)&&n.textContent.includes(text)),{id,text},{timeout:4500})}
 async function waitPill(page,text){await page.waitForFunction(text=>document.getElementById('chatgpt-route-indicator-host')?.shadowRoot?.getElementById('pill')?.textContent.includes(text),text,{timeout:4500})}
 const common=[msg('a','gpt-6-pro',{resolved_model_slug:'gpt-6-pro'}),msg('b','gpt-6-luna')];
+
+test('Work tpp model suffix is normalized without Chat aliasing', {
+ html:modern('work-final'),response:()=>workPayload([msg('work-final','gpt-6-astra-wm',{thinking_effort:'xhigh'})],A),
+},async({page})=>{
+ await waitLabel(page,'work-final','GPT-6-Astra · Work');const shot=await snapshot(page);
+ eq(shot.labels.length,1,'one Work response has one label');eq(shot.labels[0].surface,'work','Work surface retained on the bound label');
+ ok(!shot.labels[0].text.includes('GPT-6 Pro'),'Work Astra is not relabeled as ordinary Chat GPT-6 Pro');
+ ok(!shot.labels[0].text.includes('execution signal incomplete'),'Chat-only degradation heuristic is not applied to Work Astra');
+ await page.evaluate(()=>document.getElementById('chatgpt-route-indicator-host').shadowRoot.getElementById('pill').click());
+ const detail=await page.evaluate(()=>document.getElementById('chatgpt-route-indicator-host').shadowRoot.getElementById('detail').textContent);
+ ok(detail.includes('Work / tpp'),'detail exposes the Work surface');ok(detail.includes('gpt-6-astra-wm'),'detail preserves the exact persisted slug');
+});
+
+test('SPA navigation resets Work and Chat surface identity', {
+ html:modern('same'),
+ response:({url})=>url.pathname.endsWith(B)
+  ? payload([msg('same','gpt-6-astra')],B)
+  : workPayload([msg('same','gpt-6-astra-wm')],A),
+},async({page})=>{
+ await waitLabel(page,'same','GPT-6-Astra · Work');
+ eq((await snapshot(page)).labels[0].surface,'work','initial Work page has Work surface');
+ await page.evaluate(id=>history.pushState({},'',`/c/${id}`),B);
+ await waitLabel(page,'same','GPT-6 Pro / Astra');
+ let shot=await snapshot(page);
+ eq(shot.labels[0].surface,'chat','Work surface does not leak into ordinary Chat');
+ ok(!shot.labels[0].text.includes('· Work'),'ordinary Chat label loses the Work suffix');
+ await page.evaluate(id=>history.pushState({},'',`/c/${id}`),A);
+ await waitLabel(page,'same','GPT-6-Astra · Work');
+ shot=await snapshot(page);
+ eq(shot.labels[0].surface,'work','cached Work metadata restores its own surface');
+});
 
 test('legacy model labels and viewport', {html:legacy('a','style="height:800px"')+legacy('b','style="height:800px"'),messages:common},async({page})=>{
  await waitLabel(page,'a','GPT-6 Pro / Astra');eq((await snapshot(page)).labels.length,2,'one badge per old-style message');
