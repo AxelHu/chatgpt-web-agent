@@ -13,6 +13,7 @@ export type RequestLedgerEvent = {
   phase: string;
   callId?: string;
   mcpRequestId?: string;
+  clientSessionKey?: string;
   tool?: string;
   backend?: string;
   durationMs?: number;

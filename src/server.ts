@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Server, ProtocolError } from "@modelcontextprotocol/server";
 import type { CallToolResult } from "@modelcontextprotocol/server";
 import type { LocalToolBackend } from "./backend/types.js";
@@ -22,6 +22,20 @@ export type LocalMcpServer = {
   serveStdio(): Promise<void>;
   close(): Promise<void>;
 };
+
+type ClientSessionContext = {
+  http?: { req?: Request };
+};
+
+/**
+ * Stable, privacy-preserving key for the upstream ChatGPT session that invoked
+ * this MCP request. The raw x-openai-session token never enters local logs.
+ */
+export function clientSessionKey(ctx: ClientSessionContext): string | undefined {
+  const raw = ctx.http?.req?.headers.get("x-openai-session")?.trim();
+  if (!raw || raw.length < 16 || raw.length > 512) return undefined;
+  return `v1:${createHash("sha256").update(raw).digest("hex").slice(0, 16)}`;
+}
 
 export function createMcpProtocolServer(
   backend: LocalToolBackend,
@@ -51,12 +65,14 @@ export function createMcpProtocolServer(
     const args = request.params.arguments;
     const callId = `mcp-${randomUUID()}`;
     const mcpRequestId = String(ctx.mcpReq.id);
+    const upstreamSessionKey = clientSessionKey(ctx);
     const startedAt = performance.now();
     if (args !== undefined && (typeof args !== "object" || args === null || Array.isArray(args))) {
       ledger?.record({
         phase: "mcp_call_rejected",
         callId,
         mcpRequestId,
+        clientSessionKey: upstreamSessionKey,
         tool: name,
         ok: false,
         errorKind: "InvalidArguments",
@@ -68,6 +84,7 @@ export function createMcpProtocolServer(
       phase: "mcp_call_received",
       callId,
       mcpRequestId,
+      clientSessionKey: upstreamSessionKey,
       tool: name,
       metadata: name.startsWith("workflow_") ? { tool: name, action: normalizedArgs.action, task: normalizedArgs.task ?? normalizedArgs.key } : summarizeToolArgs(name, normalizedArgs),
     });
@@ -86,6 +103,7 @@ export function createMcpProtocolServer(
         phase: "mcp_call_completed",
         callId,
         mcpRequestId,
+        clientSessionKey: upstreamSessionKey,
         tool: name,
         ok: result.isError !== true,
         durationMs: Math.round(performance.now() - startedAt),
@@ -106,6 +124,7 @@ export function createMcpProtocolServer(
         phase: "mcp_call_failed",
         callId,
         mcpRequestId,
+        clientSessionKey: upstreamSessionKey,
         tool: name,
         ok: false,
         durationMs: Math.round(performance.now() - startedAt),

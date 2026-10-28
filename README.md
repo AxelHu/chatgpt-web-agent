@@ -109,7 +109,7 @@ systemd 应负责自动拉起 runtime，并通过 control group 清理旧子进�
 
 默认同时保留两层 7 日诊断数据：
 
-- `~/.local/state/chatgpt-web-agent/request-ledger/YYYY-MM-DD.jsonl`：64 MiB 上限的紧凑调用索引，适合按 `callId` / `sessionId` / phase 快速 grep。
+- `~/.local/state/chatgpt-web-agent/request-ledger/YYYY-MM-DD.jsonl`：64 MiB 上限的紧凑调用索引，适合按 `callId` / `clientSessionKey` / phase 快速 grep。`clientSessionKey` 是 `x-openai-session` 的本地 SHA-256 截断键；原始上游 token 永不落盘。
 - `~/.local/state/chatgpt-web-agent/full-trace/YYYY-MM-DD.jsonl`：完整 MCP/tool request、response、error 与跨 exec-runtime 阶段事件；历史日期自动 zstd 压缩为 `.jsonl.zst`，默认总上限 2 GiB。
 
 full trace 以排障完整性为优先：普通 command、patch、文本输出、文件内容、Drive/Skills/Feishu 参数与响应都会保留。只对 `Authorization` / Cookie / token / password / API key / private key 等明确凭据做窄范围遮蔽，并把 image/base64/二进制大块替换为长度与 SHA-256，避免无诊断价值的日志膨胀。所有日志目录/文件分别使用 `0700` / `0600` 权限，过期清理由写入进程自动完成。
@@ -118,8 +118,10 @@ full trace 以排障完整性为优先：普通 command、patch、文本输出�
 
 Web Agent 默认写一份轻量 request ledger 到
 `~/.local/state/chatgpt-web-agent/request-ledger/YYYY-MM-DD.jsonl`。它只记录请求阶段、MCP
-JSON-RPC id、本地 call id、tool/action/sessionId、等待时间、耗时、结果大小和错误类型等元数据；
-不会复制 `exec.command`、工具输出正文、文件内容或消息正文。默认保留 7 天，且总量上限为
+JSON-RPC id、本地 call id、tool/action/process sessionId、等待时间、耗时、结果大小、错误类型，
+以及可用时的 `clientSessionKey` 等元数据。后者可把同一上游 ChatGPT 会话的多次工具调用分组，
+但它是不可逆的本地键，不等同于 ChatGPT thread UUID；不会复制原始 `x-openai-session`、
+`exec.command`、工具输出正文、文件内容或消息正文。默认保留 7 天，且总量上限为
 64 MiB。可用 `CHATGPT_WEB_AGENT_REQUEST_LEDGER_*` 环境变量调整或关闭。
 
 独立 WebAgent Rescue 服务同时原样镜像目标 Tunnel 的 journal，默认按天保留 7 天并设置
