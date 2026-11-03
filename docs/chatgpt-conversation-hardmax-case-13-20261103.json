@@ -1,0 +1,108 @@
+{
+  "case": 13,
+  "classification": "high-confidence probable conversation hard max; original backing chat user-observed read-only, exact maximum banner not captured",
+  "share_url": "https://chatgpt.com/share/6ae9b554-5a6c-83e8-8e42-b777ef60cb69?ogimg=plain",
+  "share_id": "6ae9b554-5a6c-83e8-8e42-b777ef60cb69",
+  "backing_conversation_id": "6ae3060e-fb14-83e8-940c-d543585dca2a",
+  "title": "分析UDG卡牌对战缺口",
+  "default_model_slug": "gpt-6-pro",
+  "linear_nodes": 5599,
+  "message_nodes": 5598,
+  "mapping_branching_nodes": 0,
+  "roles": {
+    "system": 64,
+    "user": 36,
+    "assistant": 3374,
+    "tool": 2124
+  },
+  "real_user_messages": 35,
+  "turn_exchanges": 35,
+  "serialized_assistant_tool_call_nodes": 3202,
+  "tool_result_nodes": 2124,
+  "redacted_nodes": 4222,
+  "redacted_by_role": {
+    "tool": 2106,
+    "assistant": 2116
+  },
+  "tokens": {
+    "encoding": "o200k_base",
+    "visible_static_tokens": 172588,
+    "real_user_tokens": 1834,
+    "assistant_visible_tokens_excluding_redaction": 52908,
+    "model_continuations": 1098,
+    "visible_prefix_input_equivalent_tokens": 86524582,
+    "turn_start_visible_input_equivalent_tokens": 2882648
+  },
+  "serialization": {
+    "flat_slots": 116261,
+    "flat_payload_bytes": 5871580,
+    "share_html_bytes": 7123981
+  },
+  "time": {
+    "first_persisted_at": "2026-10-29T16:38:39+08:00",
+    "last_public_node_at": "2026-11-03T16:55:40+08:00",
+    "share_created_at": "2026-11-03T18:20:05+08:00",
+    "represented_lifetime_seconds": 433021.235199
+  },
+  "model_phases": [
+    {
+      "turns": "1",
+      "model": "gpt-6-pro"
+    },
+    {
+      "turns": "2-6",
+      "model": "gpt-5-6-pro"
+    },
+    {
+      "turns": "7-9",
+      "model": "gpt-6-pro"
+    },
+    {
+      "turns": "10-26",
+      "model": "gpt-5-6-pro"
+    },
+    {
+      "turns": "27-35",
+      "model": "gpt-6-pro"
+    }
+  ],
+  "last_normal_final": {
+    "position": 4907,
+    "created_at": "2026-11-03T07:00:29+08:00",
+    "turn_exchange_id": "3ac02c9a-56af-424f-97fa-801af5faeae0"
+  },
+  "after_last_normal_final": {
+    "nodes": 691,
+    "user_nodes": 3,
+    "system_nodes": 8,
+    "assistant_nodes": 353,
+    "tool_nodes": 327,
+    "serialized_call_nodes": 331,
+    "tool_result_nodes": 327,
+    "turn_exchanges": 3,
+    "normal_final_messages": 0,
+    "first_at": "2026-11-03T11:12:39+08:00",
+    "last_at": "2026-11-03T16:55:40+08:00"
+  },
+  "live_read_only_evidence": {
+    "conversation_archived": false,
+    "conversation_status": null,
+    "cloud_current_node": "0a39e9f4-aad0-4586-9d81-aaf8c0c9f6d6",
+    "terminal_message_id": null,
+    "terminal_receipt": null,
+    "persisted_outcome": "unknown",
+    "server_side_in_progress": false,
+    "native_state": "error",
+    "native_current_node": "e859dd51-86c5-47fc-a065-81b0def29f4c",
+    "bridge_state": "conflict",
+    "bridge_reason": "current_node_mismatch",
+    "bridge_diagnosis": "transport_or_sync_unknown / terminal_receipt_missing"
+  },
+  "caveats": [
+    "A public share is always read-only; the classification relies on the user's observation of the original backing chat.",
+    "No exact maximum-length banner was captured, so this remains probable rather than explicit-banner confirmed.",
+    "Nested wrapper/inner tool serialization means call-node count is not an independent external-command count.",
+    "Redacted tool/call payloads make public token and byte metrics lower-bound proxies.",
+    "Desktop, native-renderer and public-share message counts are different projections."
+  ]
+}
