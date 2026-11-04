@@ -1,0 +1,147 @@
+{
+  "case": 14,
+  "classification": "confirmed conversation hard max; explicit screenshot banner and rejected prompt absent after refresh/share",
+  "share_url": "https://chatgpt.com/share/6aea9d61-3518-83e8-ba51-22450fc1da97",
+  "share_id": "6aea9d61-3518-83e8-ba51-22450fc1da97",
+  "backing_conversation_id": "6acb3b27-ca14-83e8-92be-c7cb5022aa0b",
+  "title": "继续开发Keyforge",
+  "default_model_slug": "gpt-6-pro",
+  "screenshot": {
+    "dimensions": [
+      1243,
+      827
+    ],
+    "mode": "RGBA",
+    "bytes": 78656,
+    "sha256": "b9413bda038ddbe968d4de102c732d8b36a706a98ad3f35ad6e3c5f89350159a",
+    "address_bar_conversation_id": "6acb3b27-ca14-83e8-92be-c7cb5022aa0b",
+    "exact_error": "The conversation is too long, please start a new one.",
+    "retry_label": "重试",
+    "rejected_user_prompt": "继续完成任务"
+  },
+  "linear_nodes": 5097,
+  "message_nodes": 5096,
+  "mapping_branching_nodes": 0,
+  "roles": {
+    "user": 35,
+    "system": 53,
+    "assistant": 2649,
+    "tool": 2359
+  },
+  "real_user_messages": 33,
+  "turn_exchanges": 33,
+  "serialized_assistant_tool_call_nodes": 2224,
+  "tool_result_nodes": 2359,
+  "redacted_nodes": 3495,
+  "redacted_by_role": {
+    "assistant": 1161,
+    "tool": 2334
+  },
+  "tokens": {
+    "available": true,
+    "encoding": "o200k_base",
+    "visible_static_tokens": 114910,
+    "visible_tokens_by_role": {
+      "user": 2520,
+      "assistant": 40361,
+      "tool": 72029,
+      "system": 0
+    },
+    "real_user_tokens": 2508,
+    "assistant_visible_tokens_excluding_redaction": 29912,
+    "model_continuations": 1226,
+    "visible_prefix_input_equivalent_tokens": 88736176,
+    "turn_start_visible_input_equivalent_tokens": 1759011
+  },
+  "serialization": {
+    "flat_slots": 122542,
+    "flat_payload_bytes": 6092918,
+    "share_html_bytes": 7367987
+  },
+  "time": {
+    "first_persisted_at": "2026-10-11T15:31:54+08:00",
+    "last_public_node_at": "2026-11-04T09:55:42+08:00",
+    "share_created_at": "2026-11-04T10:50:09+08:00",
+    "represented_lifetime_seconds": 2053427.892047,
+    "share_gap_seconds": 3267.046124,
+    "finished_turn_duration_sum_seconds": 73055
+  },
+  "largest_turns": [
+    {
+      "turn": 23,
+      "nodes": 921,
+      "call_nodes": 452,
+      "tool_results": 451,
+      "normal_final": false,
+      "observed_span_seconds": 2423.378581
+    },
+    {
+      "turn": 16,
+      "nodes": 828,
+      "call_nodes": 387,
+      "tool_results": 394,
+      "normal_final": false,
+      "observed_span_seconds": 2986.901009
+    },
+    {
+      "turn": 27,
+      "nodes": 592,
+      "call_nodes": 291,
+      "tool_results": 289,
+      "normal_final": false,
+      "observed_span_seconds": 2063.993591
+    },
+    {
+      "turn": 24,
+      "nodes": 569,
+      "call_nodes": 277,
+      "tool_results": 277,
+      "normal_final": true,
+      "finished_duration_seconds": 2007
+    }
+  ],
+  "last_normal_final": {
+    "position": 5087,
+    "created_at": "2026-11-04T09:48:28+08:00",
+    "turn_exchange_id": "45d3499a-90af-4f13-9375-9367006f246f"
+  },
+  "last_persisted_partial_turn": {
+    "turn_exchange_id": "72496b63-9c45-4478-be5d-78d80ca916bb",
+    "user_prompt_started_at": "2026-11-04T09:54:33+08:00",
+    "last_public_node_at": "2026-11-04T09:55:42+08:00",
+    "nodes": 9,
+    "user_nodes": 1,
+    "assistant_nodes": 6,
+    "tool_nodes": 2,
+    "serialized_call_nodes": 3,
+    "tool_result_nodes": 2,
+    "normal_final_messages": 0
+  },
+  "rejected_admission": {
+    "prompt": "继续完成任务",
+    "present_in_screenshot": true,
+    "present_in_refreshed_share": false,
+    "explicit_error": "The conversation is too long, please start a new one."
+  },
+  "live_read_only_evidence": {
+    "cloud_current_node": "6aa4da1e-56b7-43ff-87d8-dfcadebe0fbc",
+    "terminal_message_id": null,
+    "persisted_outcome": "unknown",
+    "server_side_in_progress": false,
+    "native_state": "error",
+    "native_current_node": "f1b19f98-f827-4d45-8f27-6cc0be4654f2",
+    "native_terminal_request_id": "a9dd1fbf-7972-4edd-8324-1d9da14831b9",
+    "native_terminal_result": "completed",
+    "native_terminal_message_id": null,
+    "bridge_state": "conflict",
+    "bridge_reason": "current_node_mismatch",
+    "bridge_diagnosis": "transport_or_sync_unknown / terminal_receipt_missing"
+  },
+  "caveats": [
+    "The screenshot binary is preserved in the source investigation conversation; this repository records its cryptographic hash and visible evidence.",
+    "The rejected user prompt and explicit product error are not exported by the refreshed public share.",
+    "Serialized call-node counts can include wrapper and inner call layers and are not independent external-command counts.",
+    "Redacted tool/call payloads make public token and byte metrics lower-bound proxies.",
+    "Desktop, native-renderer and public-share message counts are different projections."
+  ]
+}
