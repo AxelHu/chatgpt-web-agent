@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Inspect a public ChatGPT share snapshot without relying on the rendered UI.
 
-The current ChatGPT share page serializes conversation state as a flattened
-React Router reference table. This script extracts that table, walks the
-current linear branch, and reports structural metrics useful for studying
-long/tool-heavy ChatGPT Web conversations.
+ChatGPT public shares may expose conversation state either as a flattened
+React Router reference table or through the public backend-api/share canonical
+JSON. This script supports both forms, walks the current linear branch, and
+reports structural metrics useful for studying long/tool-heavy ChatGPT Web
+conversations.
 
 The public share intentionally redacts many connector/tool payloads. Token
 metrics are therefore lower-bound / visible-prefix metrics, not billing usage.
@@ -17,6 +18,8 @@ import json
 import re
 import statistics
 import sys
+import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -55,7 +58,27 @@ def extract_flat_payload(html: str) -> list[Any]:
     raise RuntimeError("Could not locate flattened ChatGPT share payload")
 
 
-class FlatState:
+class StateView:
+    def deep_strings(self, value: Any, depth: int = 0) -> list[str]:
+        if depth > 12:
+            return []
+        value = self.value(value)
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, list):
+            out: list[str] = []
+            for item in value:
+                out.extend(self.deep_strings(item, depth + 1))
+            return out
+        if isinstance(value, dict):
+            out: list[str] = []
+            for item in self.dict(value).values():
+                out.extend(self.deep_strings(item, depth + 1))
+            return out
+        return []
+
+
+class FlatState(StateView):
     def __init__(self, payload: list[Any]):
         self.payload = payload
 
@@ -82,26 +105,25 @@ class FlatState:
                 return decoded
         raise RuntimeError("Conversation root not found")
 
-    def deep_strings(self, value: Any, depth: int = 0) -> list[str]:
-        if depth > 12:
-            return []
-        value = self.value(value)
-        if isinstance(value, str):
-            return [value]
-        if isinstance(value, list):
-            out: list[str] = []
-            for item in value:
-                out.extend(self.deep_strings(item, depth + 1))
-            return out
-        if isinstance(value, dict):
-            out: list[str] = []
-            for item in self.dict(value).values():
-                out.extend(self.deep_strings(item, depth + 1))
-            return out
-        return []
 
 
-def message_text(state: FlatState, content: dict[str, Any]) -> str:
+class CanonicalState(StateView):
+    """Identity view for the public backend-api/share canonical JSON."""
+
+    def __init__(self, conversation: dict[str, Any]):
+        self.conversation = conversation
+
+    def value(self, value: Any) -> Any:
+        return value
+
+    def dict(self, value: dict[str, Any]) -> dict[str, Any]:
+        return value
+
+    def root(self) -> dict[str, Any]:
+        return self.conversation
+
+
+def message_text(state: StateView, content: dict[str, Any]) -> str:
     content_type = content.get("content_type")
     if content_type == "multimodal_text":
         # Do not recursively stringify image/file objects; only count direct text parts.
@@ -125,7 +147,7 @@ def message_text(state: FlatState, content: dict[str, Any]) -> str:
     return "\n".join(item for item in strings if item)
 
 
-def parse_rows(state: FlatState, root: dict[str, Any]) -> list[dict[str, Any]]:
+def parse_rows(state: StateView, root: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     linear = state.value(root["linear_conversation"])
     for position, node_ref in enumerate(linear):
@@ -277,20 +299,99 @@ def add_token_metrics(rows: list[dict[str, Any]], result: dict[str, Any]) -> Non
     }
 
 
-def load_payload(source: str) -> tuple[list[Any], int | None]:
+def is_canonical_conversation(value: Any) -> bool:
+    return (
+        isinstance(value, dict)
+        and isinstance(value.get("mapping"), dict)
+        and isinstance(value.get("linear_conversation"), list)
+    )
+
+
+def share_id_from_url(source: str) -> str | None:
+    parsed = urllib.parse.urlparse(source)
+    match = re.search(r"/share/([0-9a-f-]{36})(?:$|[/?#])", parsed.path + ("?" + parsed.query if parsed.query else ""))
+    return match.group(1) if match else None
+
+
+def load_public_canonical_share(source: str) -> tuple[dict[str, Any], int]:
+    share_id = share_id_from_url(source)
+    if not share_id:
+        raise RuntimeError("Could not determine ChatGPT share id for canonical fallback")
+    parsed = urllib.parse.urlparse(source)
+    host = parsed.netloc or "chatgpt.com"
+    if host == "chat.openai.com":
+        host = "chatgpt.com"
+    endpoint = f"https://{host}/backend-api/share/{share_id}"
+    req = urllib.request.Request(endpoint, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=60) as response:  # nosec - derived public share URL
+        raw = response.read()
+    conversation = json.loads(raw.decode("utf-8", errors="replace"))
+    if not is_canonical_conversation(conversation):
+        raise RuntimeError("Public share canonical JSON does not contain conversation state")
+    return conversation, len(raw)
+
+
+def load_state(source: str) -> tuple[StateView, dict[str, Any], dict[str, Any]]:
     if not source.startswith(("https://", "http://")) and Path(source).suffix.lower() == ".json":
-        payload = json.loads(Path(source).read_text(encoding="utf-8"))
-        if not isinstance(payload, list):
-            raise RuntimeError("Flattened payload JSON must contain a top-level list")
-        return payload, None
-    html = load_html(source)
-    return extract_flat_payload(html), len(html.encode("utf-8"))
+        raw = Path(source).read_bytes()
+        payload = json.loads(raw.decode("utf-8"))
+        if isinstance(payload, list):
+            state = FlatState(payload)
+            return state, state.root(), {
+                "source_format": "flattened_json",
+                "source_bytes": len(raw),
+                "flat_slots": len(payload),
+                "html_bytes": None,
+            }
+        if is_canonical_conversation(payload):
+            state = CanonicalState(payload)
+            return state, state.root(), {
+                "source_format": "canonical_json",
+                "source_bytes": len(raw),
+                "flat_slots": None,
+                "html_bytes": None,
+            }
+        raise RuntimeError("JSON must contain a flattened list or canonical ChatGPT share conversation")
+
+    try:
+        html = load_html(source)
+    except (urllib.error.URLError, TimeoutError):
+        if not source.startswith(("https://", "http://")):
+            raise
+        conversation, canonical_bytes = load_public_canonical_share(source)
+        state = CanonicalState(conversation)
+        return state, state.root(), {
+            "source_format": "canonical_json_fallback",
+            "source_bytes": canonical_bytes,
+            "flat_slots": None,
+            "html_bytes": None,
+        }
+
+    html_bytes = len(html.encode("utf-8"))
+    try:
+        payload = extract_flat_payload(html)
+    except RuntimeError:
+        if not source.startswith(("https://", "http://")):
+            raise
+        conversation, canonical_bytes = load_public_canonical_share(source)
+        state = CanonicalState(conversation)
+        return state, state.root(), {
+            "source_format": "canonical_json_fallback",
+            "source_bytes": canonical_bytes,
+            "flat_slots": None,
+            "html_bytes": html_bytes,
+        }
+    state = FlatState(payload)
+    return state, state.root(), {
+        "source_format": "flattened_html",
+        "source_bytes": html_bytes,
+        "flat_slots": len(payload),
+        "html_bytes": html_bytes,
+    }
 
 
 def analyze(source: str) -> dict[str, Any]:
-    payload, html_bytes = load_payload(source)
-    state = FlatState(payload)
-    root = state.root()
+    state, root, source_meta = load_state(source)
     rows = parse_rows(state, root)
     turn_order = ordered_turns(rows)
     turns = turn_metrics(rows, turn_order)
@@ -305,8 +406,10 @@ def analyze(source: str) -> dict[str, Any]:
     ]
     result: dict[str, Any] = {
         "source": source,
-        "html_bytes": html_bytes,
-        "flat_slots": len(payload),
+        "source_format": source_meta["source_format"],
+        "source_bytes": source_meta["source_bytes"],
+        "html_bytes": source_meta["html_bytes"],
+        "flat_slots": source_meta["flat_slots"],
         "title": root.get("title"),
         "conversation_id": root.get("conversation_id"),
         "backing_conversation_id": root.get("backing_conversation_id"),
@@ -374,7 +477,10 @@ def print_text(result: dict[str, Any]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("source", help="public chatgpt.com/share URL, saved HTML, or flattened payload JSON")
+    parser.add_argument(
+        "source",
+        help="public chatgpt.com/share URL, saved HTML, flattened payload JSON, or canonical share JSON",
+    )
     parser.add_argument("--json", action="store_true", help="emit full JSON metrics")
     args = parser.parse_args()
     result = analyze(args.source)

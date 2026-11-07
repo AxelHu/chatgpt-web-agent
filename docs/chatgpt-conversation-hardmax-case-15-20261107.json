@@ -1,0 +1,256 @@
+{
+  "case": 15,
+  "classification": "user-reported conversation hard max; exact product banner not captured",
+  "share_url": "https://chatgpt.com/share/6aee79e2-7b30-83e8-a4e7-a077d62df1a4",
+  "share_id": "6aee79e2-7b30-83e8-a4e7-a077d62df1a4",
+  "backing_conversation_id": "6aeca1eb-436c-83e8-959e-0630bf8b5b67",
+  "title": "继续复活阿斯塔塔",
+  "default_model_slug": "gpt-6-pro",
+  "source_format": "canonical_public_share_json",
+  "linear_nodes": 6993,
+  "message_nodes": 6992,
+  "mapping_branching_nodes": 0,
+  "roles": {
+    "user": 5,
+    "assistant": 4871,
+    "tool": 2116
+  },
+  "real_user_messages": 5,
+  "turn_exchanges": 5,
+  "serialized_assistant_tool_call_nodes": 2753,
+  "tool_result_nodes": 2116,
+  "redacted_nodes": 4230,
+  "redacted_by_role": {
+    "assistant": 2114,
+    "tool": 2116
+  },
+  "model_identity": {
+    "gpt-6-pro_nodes": 2749,
+    "nodes_without_model_slug": 4243,
+    "other_model_nodes": 0,
+    "all_exposed_turn_models_are_gpt-6-pro": true
+  },
+  "orchestration": {
+    "unique_subagent_threads": 10,
+    "unique_agent_paths": 10,
+    "subagent_activity": {
+      "started": 7,
+      "interacted": 511,
+      "completed": 91,
+      "total": 609
+    },
+    "collab_agent_wait_items": 28,
+    "assistant_api_tool_call_items": 2114,
+    "tool_api_tool_call_results": 2112,
+    "assistant_web_run_calls": 2,
+    "web_run_results": 4
+  },
+  "tokens": {
+    "available": true,
+    "encoding": "o200k_base",
+    "visible_static_tokens": 101103,
+    "visible_tokens_by_role": {
+      "user": 96,
+      "assistant": 81963,
+      "tool": 19044,
+      "system": 0
+    },
+    "real_user_tokens": 96,
+    "assistant_visible_tokens_excluding_redaction": 62937,
+    "model_continuations": 1858,
+    "visible_prefix_input_equivalent_tokens": 87350959,
+    "turn_start_visible_input_equivalent_tokens": 150536
+  },
+  "serialization": {
+    "canonical_public_json_bytes": 17589871,
+    "share_html_route_initially_returned_503": true,
+    "backend_api_share_succeeded": true
+  },
+  "time": {
+    "first_persisted_at": "2026-11-05T23:35:36+08:00",
+    "last_public_node_at": "2026-11-07T06:06:50+08:00",
+    "share_created_at": "2026-11-07T09:07:47+08:00",
+    "represented_lifetime_seconds": 109873.70456600189,
+    "share_gap_seconds": 10856.934262037277
+  },
+  "normal_final_messages": 0,
+  "reasoning_recap_end_turns": [
+    {
+      "turn_index": 2,
+      "created_at": "2026-11-06T12:20:55+08:00",
+      "content": "已停止思考"
+    },
+    {
+      "turn_index": 3,
+      "created_at": "2026-11-06T16:28:23+08:00",
+      "content": "已停止思考"
+    }
+  ],
+  "persisted_in_progress_nodes": 3,
+  "turns": [
+    {
+      "index": 1,
+      "nodes": 661,
+      "call_nodes": 289,
+      "tool_results": 235,
+      "subagent_activity_items": 55,
+      "observed_span_seconds": 4158.828577,
+      "normal_final": false
+    },
+    {
+      "index": 2,
+      "nodes": 1467,
+      "call_nodes": 551,
+      "tool_results": 449,
+      "subagent_activity_items": 101,
+      "observed_span_seconds": 12594.436554,
+      "normal_final": false
+    },
+    {
+      "index": 3,
+      "nodes": 1573,
+      "call_nodes": 593,
+      "tool_results": 461,
+      "subagent_activity_items": 132,
+      "observed_span_seconds": 14793.292097,
+      "normal_final": false
+    },
+    {
+      "index": 4,
+      "nodes": 179,
+      "call_nodes": 72,
+      "tool_results": 52,
+      "subagent_activity_items": 20,
+      "observed_span_seconds": 1863.028306,
+      "normal_final": false
+    },
+    {
+      "index": 5,
+      "nodes": 3112,
+      "call_nodes": 1248,
+      "tool_results": 919,
+      "subagent_activity_items": 301,
+      "observed_span_seconds": 29609.599566,
+      "normal_final": false
+    }
+  ],
+  "public_tail": {
+    "current_node": "96c21a9c-7f19-59a7-8d05-9e857acfadd9",
+    "created_at": "2026-11-07T06:06:50+08:00",
+    "type": "assistant_api_tool_call",
+    "normal_final": false
+  },
+  "fresh_cloud_read": {
+    "cloud_current_node": "41d7169d-de55-56ef-b338-87d72d93d26f",
+    "cloud_current_node_type": "tool_result_after_public_tail_call",
+    "cloud_current_node_created_at": "2026-11-07T06:06:51+08:00",
+    "terminal_message_id": null,
+    "terminal_receipt": null,
+    "persisted_outcome": "unknown",
+    "server_side_in_progress": false,
+    "bridge_state": "unknown",
+    "bridge_diagnosis": "transport_or_sync_unknown / terminal_receipt_missing",
+    "native_evidence": "unavailable: conversation_not_loaded",
+    "desktop_total_messages": 6988
+  },
+  "canonical_comparison": [
+    {
+      "case": "case11",
+      "linear_nodes": 4024,
+      "turn_scoped_tool_calls": 725,
+      "tool_result_nodes": 2628,
+      "redacted_nodes": 3103,
+      "real_user_messages": 46,
+      "turn_exchanges": 47,
+      "continuations": 544,
+      "visible_tokens": 112223,
+      "prefix_input": 22924477,
+      "canonical_bytes": 9813753,
+      "title": "完善景点场景建模",
+      "model": "gpt-6-pro"
+    },
+    {
+      "case": "case12",
+      "linear_nodes": 6218,
+      "turn_scoped_tool_calls": 2574,
+      "tool_result_nodes": 3077,
+      "redacted_nodes": 4539,
+      "real_user_messages": 30,
+      "turn_exchanges": 34,
+      "continuations": 1686,
+      "visible_tokens": 149605,
+      "prefix_input": 133641388,
+      "canonical_bytes": 14383494,
+      "title": "放置增量开发",
+      "model": "gpt-6-pro"
+    },
+    {
+      "case": "case13",
+      "linear_nodes": 5599,
+      "turn_scoped_tool_calls": 3202,
+      "tool_result_nodes": 2124,
+      "redacted_nodes": 4222,
+      "real_user_messages": 35,
+      "turn_exchanges": 35,
+      "continuations": 1098,
+      "visible_tokens": 172265,
+      "prefix_input": 86334041,
+      "canonical_bytes": 11905046,
+      "title": "分析UDG卡牌对战缺口",
+      "model": "gpt-6-pro"
+    },
+    {
+      "case": "case14",
+      "linear_nodes": 5097,
+      "turn_scoped_tool_calls": 2224,
+      "tool_result_nodes": 2359,
+      "redacted_nodes": 3495,
+      "real_user_messages": 33,
+      "turn_exchanges": 33,
+      "continuations": 1226,
+      "visible_tokens": 113585,
+      "prefix_input": 87625719,
+      "canonical_bytes": 12323461,
+      "title": "继续开发Keyforge",
+      "model": "gpt-6-pro"
+    },
+    {
+      "case": "mixed10",
+      "linear_nodes": 6238,
+      "turn_scoped_tool_calls": 1505,
+      "tool_result_nodes": 3310,
+      "redacted_nodes": 4177,
+      "real_user_messages": 41,
+      "turn_exchanges": 41,
+      "continuations": 1149,
+      "visible_tokens": 257012,
+      "prefix_input": 120728132,
+      "canonical_bytes": 16558639,
+      "title": "继续研究黎曼猜想",
+      "model": "gpt-6-pro"
+    },
+    {
+      "case": "case15",
+      "linear_nodes": 6993,
+      "turn_scoped_tool_calls": 2753,
+      "tool_result_nodes": 2116,
+      "redacted_nodes": 4230,
+      "real_user_messages": 5,
+      "turn_exchanges": 5,
+      "continuations": 1858,
+      "visible_tokens": 101103,
+      "prefix_input": 87350959,
+      "canonical_bytes": 17589871,
+      "title": "继续复活阿斯塔塔",
+      "model": "gpt-6-pro"
+    }
+  ],
+  "caveats": [
+    "The exact maximum-length product banner was not captured in this investigation; the user supplied the share as a hard-max case.",
+    "All exposed model identities are gpt-6-pro, while redacted wrapper/tool nodes often omit model_slug.",
+    "Serialized call-node counts include orchestration wrappers and are not counts of independent external commands.",
+    "The public share ends one call before the latest cloud tool-result node and has no normal final.",
+    "Redacted payloads make token and byte metrics lower-bound public proxies.",
+    "Desktop and public-share message counts are different projections."
+  ]
+}
