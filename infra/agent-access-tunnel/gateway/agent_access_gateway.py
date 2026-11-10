@@ -81,6 +81,7 @@ class GatewayState:
         self.pair_ttl = pair_ttl
         self.access_ttl = access_ttl
         self.allowed_profiles = frozenset(allowed_profiles or {"minimax"})
+        self.oauth = None  # Opt-in adapter; legacy MiniMax pairing stays unchanged.
         self._master_key = self._load_or_create_master_key()
         self._init_db()
 
@@ -350,13 +351,16 @@ class GatewayHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _text(self, status, text, content_type="text/plain; charset=utf-8"):
+    def _text(self, status, text, content_type="text/plain; charset=utf-8", extra_headers=None):
         data = text.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        if extra_headers:
+            for key, value in extra_headers.items():
+                self.send_header(key, value)
         self.end_headers()
         self.wfile.write(data)
 
@@ -386,6 +390,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
         return value[7:].strip()
 
     def do_GET(self):
+        if self.app.state.oauth and self.app.state.oauth.handle(self):
+            return
         path = urlparse(self.path).path
         if path == "/healthz":
             upstream_ok = self.app.upstream_probe()
@@ -404,7 +410,13 @@ class GatewayHandler(BaseHTTPRequestHandler):
         self._json(404, {"error": "not_found"})
 
     def do_POST(self):
+        if self.app.state.oauth and self.app.state.oauth.handle(self):
+            return
         path = urlparse(self.path).path
+        if self.app.state.oauth and path in {"/v1/pair/start", "/v1/pair/poll", "/v1/auth/token"}:
+            # OAuth instances must not expose an alternate public token flow.
+            self._json(404, {"error": "not_found"})
+            return
         if path == "/v1/pair/start":
             if not self.app.rate_limiter.allow(self._client_ip()):
                 self._json(429, {"error": "rate_limited"}, {"Retry-After": "60"})
@@ -446,6 +458,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
         self._json(404, {"error": "not_found"})
 
     def do_DELETE(self):
+        if self.app.state.oauth and self.app.state.oauth.handle(self):
+            return
         path = urlparse(self.path).path
         if path == "/mcp":
             self._proxy_mcp()
@@ -454,9 +468,11 @@ class GatewayHandler(BaseHTTPRequestHandler):
 
     def _proxy_mcp(self):
         try:
-            principal = self.app.state.verify_access_token(self._bearer(), "mcp")
+            principal = (self.app.state.oauth.verify_access(self._bearer()) if self.app.state.oauth
+                         else self.app.state.verify_access_token(self._bearer(), "mcp"))
         except PermissionError:
-            self._json(401, {"error": "unauthorized"}, {"WWW-Authenticate": "Bearer"})
+            challenge = self.app.state.oauth.challenge if self.app.state.oauth else "Bearer"
+            self._json(401, {"error": "unauthorized"}, {"WWW-Authenticate": challenge})
             return
 
         length = int(self.headers.get("Content-Length", "0") or "0")
@@ -545,7 +561,7 @@ def parse_listen(value):
 def build_state_from_env():
     state_dir = os.environ.get("AGENT_ACCESS_STATE_DIR", "/var/lib/agent-access-gateway")
     profiles = [x.strip() for x in os.environ.get("AGENT_ACCESS_PROFILES", "minimax").split(",") if x.strip()]
-    return GatewayState(
+    state = GatewayState(
         db_path=os.path.join(state_dir, "state.sqlite3"),
         master_key_path=os.path.join(state_dir, "master.key"),
         public_base=os.environ.get("AGENT_ACCESS_PUBLIC_BASE", "https://sites.axelhu.com/agent-access"),
@@ -553,6 +569,20 @@ def build_state_from_env():
         access_ttl=int(os.environ.get("AGENT_ACCESS_ACCESS_TTL", "900")),
         allowed_profiles=profiles,
     )
+    if os.environ.get("AGENT_ACCESS_OAUTH_ENABLED", "false").lower() in {"1", "true", "yes"}:
+        if __package__:
+            from .oauth import OAuthService
+        else:
+            from oauth import OAuthService
+        redirects = [x.strip() for x in os.environ.get(
+            "AGENT_ACCESS_OAUTH_REDIRECT_URIS", "https://claude.ai/api/mcp/auth_callback").split(",") if x.strip()]
+        state.oauth = OAuthService(
+            state, profile=os.environ.get("AGENT_ACCESS_OAUTH_PROFILE", "claude"),
+            allowed_redirects=redirects,
+            refresh_ttl=int(os.environ.get("AGENT_ACCESS_OAUTH_REFRESH_TTL", "2592000")),
+            code_ttl=int(os.environ.get("AGENT_ACCESS_OAUTH_CODE_TTL", "120")),
+        )
+    return state
 
 
 def main():

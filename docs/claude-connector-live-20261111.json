@@ -1,0 +1,94 @@
+{
+  "run_id": "20261110T164703Z-7e4974f24d62",
+  "started_at": "2026-11-10T16:47:03Z",
+  "endpoint": "https://sites.axelhu.com/agent-access-claude/mcp",
+  "proxy": "http://127.0.0.1:1080",
+  "success": true,
+  "steps": [
+    {
+      "step": "unauthenticated_discovery",
+      "ok": true
+    },
+    {
+      "step": "dcr_and_exact_operator_approval",
+      "ok": true,
+      "callback_followed": false
+    },
+    {
+      "step": "legacy_mcp_initialize_and_catalog",
+      "ok": true,
+      "protocol": "2025-11-25",
+      "tool_count": 16,
+      "tools": [
+        "apply_patch",
+        "drive_download",
+        "drive_export",
+        "drive_list",
+        "drive_mkdir",
+        "drive_search",
+        "drive_stat",
+        "drive_upload",
+        "exec",
+        "feishu_directory",
+        "feishu_message",
+        "process",
+        "read",
+        "rescue_exec",
+        "skill_read",
+        "skills_list"
+      ]
+    },
+    {
+      "step": "patch_read_and_background_process",
+      "ok": true
+    },
+    {
+      "step": "refresh_and_read",
+      "ok": true
+    },
+    {
+      "step": "fixture_removal",
+      "ok": true
+    },
+    {
+      "step": "revocation_and_401",
+      "ok": true
+    }
+  ],
+  "cleanup": {
+    "fixture_removed": true,
+    "grant_revoked": true
+  },
+  "duration_seconds": 40.53,
+  "started_at_shanghai": "2026-11-11T00:47:03+08:00",
+  "unit_tests": {
+    "command": "python3 -m unittest tests.test_oauth tests.test_gateway -v",
+    "passed": 14,
+    "oauth": 11,
+    "legacy_gateway": 3
+  },
+  "deployment": {
+    "existing_home_services_restarted": false,
+    "existing_minimax_gateway_restarted": false,
+    "claude_cloud_service": "agent-access-claude.service",
+    "claude_home_services": [
+      "agent-access-claude-mcp.service",
+      "agent-access-claude-tunnel.service"
+    ],
+    "source_sha256": {
+      "gateway/agent_access_gateway.py": "30e9caafaba512893fc88d86995220ce4a74ab24b75b9a71f01cdc8738cf01c4",
+      "gateway/oauth.py": "5dcd1e82f20e906cb7570c981dc8ebe11eebdd4d76ee959df930c0973bf2d4b0",
+      "gateway/admin.py": "f887ff5a318008ce5e033c30836b71a472a237e52133777509d20b5a029c9deb",
+      "gateway/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "ops/cloud/agent-access-claude.service": "353f5d03420091d1081b1fbf92f23ff8a305c40d2d3deb378be2ada210249b6c",
+      "ops/cloud/caddy-claude-snippet.txt": "6ea2b81457bb8bce8f0d295ade110c5467f39cea29c95bb81854d76cd294212c"
+    }
+  },
+  "claude_account_acceptance": {
+    "status": "pending_user_verification_and_login",
+    "browser": "existing Firefox with SOCKS5 PAC at localhost:1080",
+    "observed_page": "Cloudflare human verification",
+    "connector_added": false,
+    "model_tool_call_verified": false
+  }
+}

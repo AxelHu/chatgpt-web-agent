@@ -15,6 +15,7 @@ def main():
     revoke.add_argument("client_id")
     sub.add_parser("pairings")
     sub.add_parser("clients")
+    sub.add_parser("oauth-requests")
     args = parser.parse_args()
 
     state = build_state_from_env()
@@ -29,6 +30,10 @@ def main():
         print(json.dumps(state.list_pairings(), indent=2))
     elif args.command == "clients":
         print(json.dumps(state.list_clients(), indent=2))
+    elif args.command == "oauth-requests":
+        if state.oauth is None:
+            parser.error("OAuth is not enabled for this gateway instance")
+        print(json.dumps(state.oauth.list_requests(), indent=2))
 
 
 if __name__ == "__main__":

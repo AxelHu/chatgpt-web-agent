@@ -2,7 +2,7 @@
 
 Vendor-neutral authenticated ingress for trusted private Agent services.
 
-The first deployment exposes a dedicated WebAgentTools MCP frontend to MiniMax Code without changing or replacing OpenAI's Secure MCP Tunnel.
+The first deployment exposes a dedicated WebAgentTools MCP frontend to MiniMax Code without changing or replacing OpenAI's Secure MCP Tunnel. A separate Claude deployment now adds standard OAuth authorization code + PKCE and Dynamic Client Registration; see [Claude setup](CLAUDE.md).
 
 Architecture:
 
@@ -29,9 +29,14 @@ Components:
 
 - gateway/agent_access_gateway.py - auth gateway and MCP reverse proxy, Python stdlib only.
 - gateway/admin.py - local operator CLI for pairing approval and revocation.
+- gateway/oauth.py - opt-in OAuth adapter for operator-approved Claude connectors, with separate rotating credentials.
 - plugin/webagenttools-home/ - Agent Plugins V1 package recognized by MiniMax Code.
 - ops/home/ - dedicated MCP frontend and outbound SSH reverse-tunnel units.
 - ops/cloud/ - gateway service and Caddy route example.
+
+The original device-pairing endpoints and token format below describe the MiniMax deployment.
+The Claude instance has its own port, state database, signing key, frontend and reverse tunnel,
+and rejects those legacy public pairing endpoints. Both integrations use the same local tools.
 
 Security properties:
 

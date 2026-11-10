@@ -1,0 +1,15 @@
+[Unit]
+Description=Agent Access reverse tunnel for Claude WebAgentTools
+After=network-online.target agent-access-claude-mcp.service
+Wants=network-online.target agent-access-claude-mcp.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ssh -NT -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o TCPKeepAlive=yes -R 127.0.0.1:18792:127.0.0.1:18792 tencent-cloud-2
+Restart=always
+RestartSec=5
+TimeoutStopSec=10
+KillMode=control-group
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,14 @@
+# Insert in the existing sites.axelhu.com block, before its catch-all handle.
+# Production uses Caddy 2.6.2: skip_log was renamed log_skip in Caddy 2.8.
+# OAuth query/state parameters and browser cookies must not enter access logs.
+@claude_oauth_private path /agent-access-claude/oauth/*
+skip_log @claude_oauth_private
+
+@claude_oauth_discovery path /.well-known/oauth-authorization-server/agent-access-claude /.well-known/oauth-protected-resource/agent-access-claude/mcp
+handle @claude_oauth_discovery {
+    reverse_proxy 127.0.0.1:3251
+}
+
+handle_path /agent-access-claude/* {
+    reverse_proxy 127.0.0.1:3251
+}
