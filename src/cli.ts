@@ -3,8 +3,8 @@ import { createBridgeRuntime } from "./runtime.js";
 import { createLocalMcpServer } from "./server.js";
 
 async function main(): Promise<void> {
-  const { backend, ledger, trace } = createBridgeRuntime();
-  const localServer = createLocalMcpServer(backend, ledger, trace);
+  const { backend, ledger, trace, sessions } = createBridgeRuntime();
+  const localServer = createLocalMcpServer(backend, ledger, trace, sessions);
   let closing = false;
   const close = async () => {
     if (closing) {

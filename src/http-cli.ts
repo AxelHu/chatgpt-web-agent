@@ -26,7 +26,7 @@ function parseLoopbackListen(value: string): { host: string; port: number } {
 }
 
 async function main(): Promise<void> {
-  const { backend, ledger, trace } = createBridgeRuntime();
+  const { backend, ledger, trace, sessions } = createBridgeRuntime();
   const listenValue = process.env.CHATGPT_WEB_AGENT_MCP_HTTP_LISTEN?.trim();
   const socketValue = process.env.CHATGPT_WEB_AGENT_MCP_HTTP_SOCKET?.trim();
   if (listenValue && socketValue) {
@@ -45,7 +45,7 @@ async function main(): Promise<void> {
     }
   }
 
-  const mcp = createHttpMcpServer({ backend, ledger, trace });
+  const mcp = createHttpMcpServer({ backend, ledger, trace, sessions });
   let closing = false;
   const close = async () => {
     if (closing) return;

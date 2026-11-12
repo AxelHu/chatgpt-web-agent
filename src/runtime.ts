@@ -10,12 +10,14 @@ import type { LocalToolBackend } from "./backend/types.js";
 import { loadBridgeConfig, type BridgeConfig } from "./config.js";
 import { FullTrace } from "./full-trace.js";
 import { RequestLedger } from "./request-ledger.js";
+import { SessionTools } from "./session-tools.js";
 
 export type BridgeRuntime = {
   config: BridgeConfig;
   backend: CompositeBackend;
   ledger: RequestLedger;
   trace: FullTrace;
+  sessions: SessionTools;
 };
 
 export function createBridgeRuntime(): BridgeRuntime {
@@ -59,5 +61,6 @@ export function createBridgeRuntime(): BridgeRuntime {
     backend: new CompositeBackend(backends),
     ledger,
     trace,
+    sessions: new SessionTools(),
   };
 }

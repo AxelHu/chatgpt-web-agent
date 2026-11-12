@@ -16,6 +16,7 @@ import { EventRuntime } from "./events.js";
 import { WorkflowCoordinator } from "./workflows.js";
 import { ProcessWaitDriver } from './process-waits.js';
 import { EVENT_AUDIT_VERSION } from './event-request-audit.js';
+import type { SessionTools } from './session-tools.js';
 
 const MODERN_PROTOCOL_VERSION = "2026-07-28";
 
@@ -24,6 +25,7 @@ export type HttpMcpServerOptions = {
   ledger?: RequestLedger;
   trace?: FullTrace;
   events?: EventRuntime | false;
+  sessions?: SessionTools;
 };
 
 export type HttpMcpServer = {
@@ -36,7 +38,7 @@ function errorKind(error: unknown): string {
 }
 
 export function createHttpMcpServer(options: HttpMcpServerOptions): HttpMcpServer {
-  const { backend, ledger, trace } = options;
+  const { backend, ledger, trace, sessions } = options;
   const events = options.events === false
     ? undefined
     : options.events ?? (process.env.CHATGPT_WEB_AGENT_EVENTS_ENABLED === "true" ? new EventRuntime() : undefined);
@@ -70,6 +72,7 @@ export function createHttpMcpServer(options: HttpMcpServerOptions): HttpMcpServe
         events,
         "local-tunnel-user",
         context.era === "modern",
+        sessions,
       );
     },
     {
@@ -141,6 +144,7 @@ export function createHttpMcpServer(options: HttpMcpServerOptions): HttpMcpServe
         nodeServer.close((error) => (error ? reject(error) : resolve()));
         nodeServer.closeIdleConnections();
       });
+      sessions?.close();
     },
   };
 }

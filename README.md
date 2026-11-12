@@ -129,6 +129,21 @@ JSON-RPC id、本地 call id、tool/action/process sessionId、等待时间、�
 日常日志轮转影响。排障时可用时间戳 + MCP request id 将 Tunnel journal 与 request ledger 对齐，
 判断一次调用停在 Tunnel→MCP、wrapper→exec-runtime、OpenClaw 执行还是 response 写回阶段。
 
+### 会话登记与活动查询
+
+每回合开头调用 `session_register({"name":"UDG美术开发3"})`，即可将这次请求的
+`clientSessionKey` 与会话显示名称绑定。后续 `exec/read/process/apply_patch` 等调用
+自动更新最近请求和结果，并在 request ledger / full trace 中附加 `sessionName`。
+同一来源重复登记只更新同一记录；不同来源即使同名也不会合并。
+
+`session_status({})` 返回最近活动的已登记来源；可按 `name` 或 `session_key`
+筛选。时间来自服务器，最近请求时间与最近完成时间分开，后台进程完成不会冒充聊天
+发起了新调用。结果反映已观察到的工具活动，不直接断言模型是否还在运行。
+
+登记存入独立的 `~/.local/state/chatgpt-web-agent/sessions.sqlite`，接口服务重启后
+保留。没有上游来源标识的连接会明确返回未绑定；不会使用“最后登记的会话”作全局默认，
+也不阻断原有工具。参见 [会话登记说明](docs/session-registration.md)。
+
 ### 配置
 
 复制 `.env.example` 查看可用环境变量。默认工具白名单为：

@@ -14,6 +14,7 @@ export type RequestLedgerEvent = {
   callId?: string;
   mcpRequestId?: string;
   clientSessionKey?: string;
+  sessionName?: string;
   tool?: string;
   backend?: string;
   durationMs?: number;

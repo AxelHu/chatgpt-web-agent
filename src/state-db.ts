@@ -9,16 +9,32 @@ export class StateDatabase {
   readonly db: DatabaseSync;
   private depth = 0;
   private closed = false;
-  constructor(readonly filename: string) {
+  constructor(readonly filename: string, options: { busyTimeoutMs?: number; synchronous?: 'FULL' | 'NORMAL' } = {}) {
+    const busyTimeoutMs = options.busyTimeoutMs ?? 5000;
+    if (!Number.isInteger(busyTimeoutMs) || busyTimeoutMs < 0 || busyTimeoutMs > 2_147_483_647) {
+      throw new RangeError('SQLite busy timeout must be an integer between 0 and 2147483647 milliseconds');
+    }
+    const synchronous = options.synchronous ?? 'FULL';
+    if (synchronous !== 'FULL' && synchronous !== 'NORMAL') {
+      throw new RangeError('SQLite synchronous mode must be FULL or NORMAL');
+    }
     fs.mkdirSync(path.dirname(filename), { recursive: true, mode: 0o700 });
     const oldMask = process.umask(0o077);
     try { this.db = new DatabaseSync(filename); } finally { process.umask(oldMask); }
-    fs.chmodSync(filename, 0o600);
-    this.db.exec('PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
-    this.db.exec('CREATE TABLE IF NOT EXISTS objects (bucket TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(bucket,key));');
-    this.db.exec("CREATE INDEX IF NOT EXISTS outbox_due ON objects(json_extract(value,'$.state'),json_extract(value,'$.nextAttemptAt')) WHERE bucket='outbox';");
-    this.db.exec("CREATE INDEX IF NOT EXISTS outbox_event ON objects(json_extract(value,'$.eventId')) WHERE bucket='outbox';");
-    this.db.exec("CREATE INDEX IF NOT EXISTS run_task ON objects(json_extract(value,'$.task')) WHERE bucket='runs';");
+    try {
+      fs.chmodSync(filename, 0o600);
+      this.db.exec(`PRAGMA busy_timeout=${busyTimeoutMs}; PRAGMA journal_mode=WAL; PRAGMA synchronous=${synchronous};`);
+      this.db.exec('CREATE TABLE IF NOT EXISTS objects (bucket TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(bucket,key));');
+      this.db.exec("CREATE INDEX IF NOT EXISTS outbox_due ON objects(json_extract(value,'$.state'),json_extract(value,'$.nextAttemptAt')) WHERE bucket='outbox';");
+      this.db.exec("CREATE INDEX IF NOT EXISTS outbox_event ON objects(json_extract(value,'$.eventId')) WHERE bucket='outbox';");
+      this.db.exec("CREATE INDEX IF NOT EXISTS run_task ON objects(json_extract(value,'$.task')) WHERE bucket='runs';");
+    } catch (error) {
+      // Opening can succeed before a pragma/schema operation fails. Release the
+      // native handle so a best-effort caller can retry without leaking it.
+      try { this.db.close(); } catch { /* Preserve the initialization error. */ }
+      this.closed = true;
+      throw error;
+    }
   }
   get<T>(bucket: string, key: string): T | undefined {
     const row = this.db.prepare('SELECT value FROM objects WHERE bucket=? AND key=?').get(bucket, key);

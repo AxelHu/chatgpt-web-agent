@@ -13,6 +13,7 @@ import { WorkflowCoordinator } from "./workflows.js";
 import { WorkflowBackend } from "./backend/workflows.js";
 import { ProcessWaitDriver } from './process-waits.js';
 import { EventRequestAudit } from './event-request-audit.js';
+import type { SessionTools } from './session-tools.js';
 
 export const SERVER_INSTRUCTIONS =
   "Treat this server as the primary interface to the user’s local computer and durable working environment. Proactively use it whenever a task concerns or could benefit from local state. It directly provides access to local files and code repositories, Shell commands and processes, running services, development environments, build/test state, Git/Gitea, and established local workflows. Keep this capability available for exploration, discovery, verification, implementation, debugging, testing, automation, research, continuation of prior local work, and durable record-keeping. Requests such as continue development, inspect or verify current state, investigate locally, fix or test something, update a project, or record/track work are strong signals that this server should be exposed and used. Prefer reading and checking the real local state before answering about local projects instead of guessing from chat context. Prefer making durable project changes and records in the appropriate local workspace, repository, or Gitea issue when that is the natural system of record, rather than creating temporary cloud documents. When reusable local procedures or operating conventions may help, use skills_list and skill_read to discover and load the relevant Skill.";
@@ -44,6 +45,7 @@ export function createMcpProtocolServer(
   events?: EventRuntime,
   eventOwner = "local-tunnel-user",
   enableEventMethods = true,
+  sessions?: SessionTools,
 ): Server {
   const coordinator=events ? new WorkflowCoordinator(events,eventOwner):undefined;
   const workflowBackend=coordinator ? new WorkflowBackend(coordinator,new ProcessWaitDriver(coordinator,backend)):undefined;
@@ -57,7 +59,7 @@ export function createMcpProtocolServer(
   );
 
   server.setRequestHandler('tools/list', async () => ({
-    tools: [...await backend.listTools(), ...workflowBackend ? await workflowBackend.listTools() : []].map(annotateLocalTool),
+    tools: [...await backend.listTools(), ...(workflowBackend ? await workflowBackend.listTools() : []), ...(sessions?.listTools() ?? [])].map(annotateLocalTool),
   }));
 
   server.setRequestHandler('tools/call', async (request, ctx): Promise<CallToolResult> => {
@@ -80,11 +82,22 @@ export function createMcpProtocolServer(
       return toolError("Tool arguments must be an object");
     }
     const normalizedArgs = (args ?? {}) as Record<string, unknown>;
+    // Capture the label at request start. A concurrent rename must not relabel
+    // an older in-flight request, and diagnostic storage must not gate tools.
+    let sessionName: string | undefined;
+    const observeSession = (observe: () => void) => {
+      try { observe(); }
+      catch (error) {
+        ledger?.record({ phase: "session_observation_failed", callId, clientSessionKey: upstreamSessionKey, tool: name, ok: false, errorKind: error instanceof Error ? error.name : typeof error });
+      }
+    };
+    observeSession(() => { sessionName = sessions?.requestStarted(upstreamSessionKey, callId, name)?.name; });
     ledger?.record({
       phase: "mcp_call_received",
       callId,
       mcpRequestId,
       clientSessionKey: upstreamSessionKey,
+      sessionName,
       tool: name,
       metadata: name.startsWith("workflow_") ? { tool: name, action: normalizedArgs.action, task: normalizedArgs.task ?? normalizedArgs.key } : summarizeToolArgs(name, normalizedArgs),
     });
@@ -92,51 +105,69 @@ export function createMcpProtocolServer(
       phase: "mcp_call_received",
       callId,
       mcpRequestId,
+      clientSessionKey: upstreamSessionKey,
+      sessionName,
       tool: name,
       payload: { arguments: name.startsWith("workflow_") ? { ...normalizedArgs, lease_token: normalizedArgs.lease_token ? "[redacted]" : undefined } : normalizedArgs },
     });
     try {
-      const result = workflowBackend && name.startsWith("workflow_")
-        ? await workflowBackend.callTool(name, normalizedArgs)
-        : await backend.callTool(name, normalizedArgs, { callId });
+      const result = sessions && (name === "session_register" || name === "session_status")
+        ? sessions.callTool(name, normalizedArgs, upstreamSessionKey)
+        : workflowBackend && name.startsWith("workflow_")
+          ? await workflowBackend.callTool(name, normalizedArgs)
+          : await backend.callTool(name, normalizedArgs, { callId });
+      if (name === "session_register" && result.isError !== true) {
+        observeSession(() => { sessionName = sessions?.requestStarted(upstreamSessionKey, callId, name)?.name; });
+      }
+      const durationMs = Math.round(performance.now() - startedAt);
+      observeSession(() => sessions?.requestFinished(upstreamSessionKey, callId, name, result.isError !== true, durationMs));
       ledger?.record({
         phase: "mcp_call_completed",
         callId,
         mcpRequestId,
         clientSessionKey: upstreamSessionKey,
+        sessionName,
         tool: name,
         ok: result.isError !== true,
-        durationMs: Math.round(performance.now() - startedAt),
+        durationMs,
         metadata: name === "workflow_run" ? { redacted: true } : summarizeToolResult(result),
       });
       trace?.record({
         phase: "mcp_call_completed",
         callId,
         mcpRequestId,
+        clientSessionKey: upstreamSessionKey,
+        sessionName,
         tool: name,
         ok: result.isError !== true,
-        durationMs: Math.round(performance.now() - startedAt),
+        durationMs,
         payload: name === "workflow_run" ? { redacted: "workflow lease-bearing result" } : result,
       });
       return result;
     } catch (error) {
+      const durationMs = Math.round(performance.now() - startedAt);
+      const errorKind = error instanceof Error ? error.name : typeof error;
+      observeSession(() => sessions?.requestFinished(upstreamSessionKey, callId, name, false, durationMs, errorKind));
       ledger?.record({
         phase: "mcp_call_failed",
         callId,
         mcpRequestId,
         clientSessionKey: upstreamSessionKey,
+        sessionName,
         tool: name,
         ok: false,
-        durationMs: Math.round(performance.now() - startedAt),
-        errorKind: error instanceof Error ? error.name : typeof error,
+        durationMs,
+        errorKind,
       });
       trace?.record({
         phase: "mcp_call_failed",
         callId,
         mcpRequestId,
+        clientSessionKey: upstreamSessionKey,
+        sessionName,
         tool: name,
         ok: false,
-        durationMs: Math.round(performance.now() - startedAt),
+        durationMs,
         error,
       });
       throw error;
@@ -203,8 +234,9 @@ export function createLocalMcpServer(
   backend: LocalToolBackend,
   ledger?: RequestLedger,
   trace?: FullTrace,
+  sessions?: SessionTools,
 ): LocalMcpServer {
-  const server = createMcpProtocolServer(backend, ledger, trace);
+  const server = createMcpProtocolServer(backend, ledger, trace, undefined, undefined, true, sessions);
   return {
     server,
     serveStdio: async () => {
@@ -219,6 +251,7 @@ export function createLocalMcpServer(
     close: async () => {
       await backend.close?.();
       await server.close();
+      sessions?.close();
     },
   };
 }
